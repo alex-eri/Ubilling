@@ -1830,3 +1830,142 @@ VALUES
 ('Site', 'site', '0.0.0', '10', '15', '5', 'Сайт: xxx.xxx.ua');
 
 ALTER TABLE `uhw_brute` ADD `login` VARCHAR(255) NOT NULL AFTER `password`;
+
+-- 0.8.3
+
+CREATE TABLE IF NOT EXISTS `wdycinfo` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `date` date NOT NULL,
+  `missedcount` int(11) DEFAULT NULL,
+  `recallscount` int(11) DEFAULT NULL,
+  `unsucccount` int(11) DEFAULT NULL,
+  `missednumbers` text,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+ALTER TABLE `taskman` ADD `change_admin` VARCHAR(255) NULL DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS `wh_reshist` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `date` datetime NOT NULL,
+  `type` varchar(40) NOT NULL,
+  `storageid` int(11) DEFAULT NULL,
+  `itemtypeid` int(11) DEFAULT NULL,
+  `count` double DEFAULT NULL,
+  `employeeid` int(11) DEFAULT NULL,
+  `admin` varchar(100) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `date` (`date`,`storageid`,`itemtypeid`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+ALTER TABLE `wh_in` ADD `admin` VARCHAR(100) NULL DEFAULT NULL AFTER `notes`; 
+
+ALTER TABLE `wh_out` ADD `admin` VARCHAR(100) NULL DEFAULT NULL AFTER `notes`; 
+
+ALTER TABLE `employee` ADD `tagid` INT(11) NULL DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS `admannouncements` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `title` varchar(255) DEFAULT NULL,
+  `text` text NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+CREATE TABLE IF NOT EXISTS `admacquainted` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `date` datetime NOT NULL,
+  `admin` varchar(40) NOT NULL,
+  `annid` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `date` (`date`,`admin`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+-- 0.8.4
+ALTER TABLE `switches` ADD `snmpwrite` VARCHAR(45) NULL AFTER `swid`;
+
+ALTER TABLE `phones` ADD INDEX (`login`);
+
+ALTER TABLE `print_card` ADD UNIQUE (`title`);
+
+CREATE TABLE IF NOT EXISTS `dealwithithist` (
+ `id` int(11) NOT NULL AUTO_INCREMENT,
+ `originalid` INT(11) NOT NULL, 
+ `mtime` datetime NOT NULL,
+ `date` date NOT NULL,
+ `login` varchar(45) NOT NULL,
+ `action` varchar(45) NOT NULL,
+ `param` varchar(45) DEFAULT NULL,
+ `note` varchar(45) DEFAULT NULL,
+ `admin` varchar(50) DEFAULT NULL,
+ `done` TINYINT(1)  NOT NULL ,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+-- 0.8.5
+
+CREATE TABLE IF NOT EXISTS `wcpedevices` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `modelid` int(11) NOT NULL,
+  `ip` varchar(45) DEFAULT NULL,
+  `mac` varchar(45) DEFAULT NULL,
+  `location` varchar(255) DEFAULT NULL,
+  `bridge` tinyint(4) NOT NULL DEFAULT '0',
+  `uplinkapid` int(11) DEFAULT NULL,
+  `uplinkcpeid` int(11) DEFAULT NULL,
+  `geo` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+CREATE TABLE IF NOT EXISTS `wcpeusers` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `cpeid` int(11) NOT NULL,
+  `login` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+
+-- 0.8.6
+ALTER TABLE `salary_jobs` ADD INDEX(`taskid`);
+
+ALTER TABLE `wh_out` ADD INDEX(`desttype`);
+
+ALTER TABLE `wh_out` ADD INDEX(`destparam`); 
+
+CREATE TABLE IF NOT EXISTS `polls` (
+  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `title` varchar(255) NOT NULL DEFAULT '',
+  `enabled` tinyint(1) NOT NULL DEFAULT '0',
+  `start_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `end_date` datetime DEFAULT '0000-00-00 00:00:00',
+  `params` text NOT NULL,
+  `admin` varchar(255) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `polls_options` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `poll_id` int(11) NOT NULL DEFAULT '0',
+  `text` text NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `poll_id` (`id`,`poll_id`) USING BTREE
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `polls_votes` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `option_id` int(11) NOT NULL DEFAULT '0',
+  `poll_id` int(11) NOT NULL DEFAULT '0',
+  `login` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `login_poll` (`poll_id`,`login`) USING BTREE,
+  UNIQUE KEY `login_poll_option` (`option_id`,`poll_id`,`login`) USING BTREE
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `zbsannhist` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `date` datetime NOT NULL,
+  `annid` int(11) NOT NULL,
+  `login` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `annid` (`annid`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1;

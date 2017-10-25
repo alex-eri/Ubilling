@@ -153,6 +153,15 @@ class PONizer {
     }
 
     /**
+     * Getter for allOltDevices array
+     *
+     * @return array
+     */
+    public function getAllOltDevices() {
+        return $this->allOltDevices;
+    }
+
+    /**
      * Loads all available snmp models data into private data property
      * 
      * @return void
@@ -825,12 +834,67 @@ class PONizer {
     }
 
     /**
+     * Returns int for ONU has or has not some of subscribers login assignment
+     * 0 - has no assignment
+     * 1 - has assignment, but login does not exist
+     * 2 - has assignment
+     *
+     * @param int $onuid
+     *
+     * @return int
+     */
+    public function checkONUAssignment($onuid) {
+        $result = 0;
+        $tLogin = '';
+
+        if (empty($onuid))
+            return $result;
+
+        $query = "SELECT * from `pononu` WHERE `id`='" . $onuid . "'";
+        $all = simple_queryall($query);
+        if (!empty($all)) {
+            $tLogin = $all[0]['login'];
+
+            if (!empty($tLogin)) {
+                $query = "SELECT * from `users` WHERE `login`='" . $tLogin . "'";
+                $LoginRec = simple_queryall($query);
+
+                empty($LoginRec) ? $result = 1 : $result = 2;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Getter for loaded ONU devices
      * 
      * @return array
      */
     public function getAllOnu() {
         return ($this->allOnu);
+    }
+
+    /**
+     * Returns ONU ID by ONU MAC or 0 if not found
+     *
+     * @param string $mac
+     *
+     * @return int
+     */
+    public function getONUIDByMAC($mac) {
+        $mac = strtolower($mac);
+        $ONUID = 0;
+
+        if (!empty($this->allOnu)) {
+            foreach ($this->allOnu as $io => $each) {
+                if ($each['mac'] == $mac) {
+                    $ONUID = $each['id'];
+                }
+            }
+        }
+
+        return $ONUID;
     }
 
     /**
@@ -845,6 +909,15 @@ class PONizer {
                 $this->allModelsData[$each['id']] = $each;
             }
         }
+    }
+
+    /**
+     * Getter for allModelsData array
+     *
+     * @return array
+     */
+    public function getAllModelsData() {
+        return $this->allModelsData;
     }
 
     /**
@@ -867,7 +940,7 @@ class PONizer {
      * @param string $mac
      * @return bool
      */
-    protected function checkMacUnique($mac) {
+    public function checkMacUnique($mac) {
         $mac = strtolower($mac);
         $result = true;
         if (!empty($this->allOnu)) {
@@ -1007,14 +1080,25 @@ class PONizer {
         $models = array();
         if (!empty($this->allModelsData)) {
             foreach ($this->allModelsData as $io => $each) {
-                $models[$each['id']] = $each['modelname'];
+                if (@$this->altCfg['ONUMODELS_FILTER']) {
+                    if (ispos($each['modelname'], 'ONU')) {
+                        $models[$each['id']] = $each['modelname'];
+                    }
+                } else {
+                    $models[$each['id']] = $each['modelname'];
+                }
             }
         }
 
         $inputs = wf_HiddenInput('createnewonu', 'true');
         $inputs.= wf_Selector('newoltid', $this->allOltDevices, __('OLT device') . $this->sup, '', true);
         $inputs.= wf_Selector('newonumodelid', $models, __('ONU model') . $this->sup, '', true);
-        $inputs.= wf_TextInput('newip', __('IP'), '', true, 20);
+        if (@$this->altCfg['PON_ONUIPASIF']) {
+            $ipFieldLabel = __('Interface');
+        } else {
+            $ipFieldLabel = __('IP');
+        }
+        $inputs.= wf_TextInput('newip', $ipFieldLabel, '', true, 20);
         $inputs.= wf_TextInput('newmac', __('MAC') . $this->sup, '', true, 20);
         $inputs.= wf_TextInput('newserial', __('Serial number'), '', true, 20);
         $inputs.= wf_TextInput('newlogin', __('Login'), '', true, 20);
@@ -1036,7 +1120,13 @@ class PONizer {
         $models = array();
         if (!empty($this->allModelsData)) {
             foreach ($this->allModelsData as $io => $each) {
-                $models[$each['id']] = $each['modelname'];
+                if (@$this->altCfg['ONUMODELS_FILTER']) {
+                    if (ispos($each['modelname'], 'ONU')) {
+                        $models[$each['id']] = $each['modelname'];
+                    }
+                } else {
+                    $models[$each['id']] = $each['modelname'];
+                }
             }
         }
 
@@ -1130,14 +1220,25 @@ class PONizer {
             $models = array();
             if (!empty($this->allModelsData)) {
                 foreach ($this->allModelsData as $io => $each) {
-                    $models[$each['id']] = $each['modelname'];
+                    if (@$this->altCfg['ONUMODELS_FILTER']) {
+                        if (ispos($each['modelname'], 'ONU')) {
+                            $models[$each['id']] = $each['modelname'];
+                        }
+                    } else {
+                        $models[$each['id']] = $each['modelname'];
+                    }
                 }
             }
 
             $inputs = wf_HiddenInput('editonu', $onuId);
             $inputs.= wf_Selector('editoltid', $this->allOltDevices, __('OLT device') . $this->sup, $this->allOnu[$onuId]['oltid'], true);
             $inputs.= wf_Selector('editonumodelid', $models, __('ONU model') . $this->sup, $this->allOnu[$onuId]['onumodelid'], true);
-            $inputs.= wf_TextInput('editip', __('IP'), $this->allOnu[$onuId]['ip'], true, 20);
+            if (@$this->altCfg['PON_ONUIPASIF']) {
+                $ipFieldLabel = __('Interface');
+            } else {
+                $ipFieldLabel = __('IP');
+            }
+            $inputs.= wf_TextInput('editip', $ipFieldLabel, $this->allOnu[$onuId]['ip'], true, 20);
             $inputs.= wf_TextInput('editmac', __('MAC') . $this->sup . ' ' . $this->getSearchmacControl($this->allOnu[$onuId]['mac']), $this->allOnu[$onuId]['mac'], true, 20);
             $inputs.= wf_TextInput('editserial', __('Serial number'), $this->allOnu[$onuId]['serial'], true, 20);
             $inputs.= wf_TextInput('editlogin', __('Login'), $this->allOnu[$onuId]['login'], true, 20);
@@ -1260,6 +1361,7 @@ class PONizer {
         if (!wf_CheckGet(array('unknownonulist'))) {
             $result.=wf_modalAuto(wf_img('skins/add_icon.png') . ' ' . __('Register new ONU'), __('Create') . ' ' . __('ONU'), $this->onuCreateForm(), 'ubButton') . ' ';
             $availOnuCache = rcms_scandir(self::ONUCACHE_PATH, '*_' . self::ONUCACHE_EXT);
+            $result.= wf_Link(self::URL_ME . '&forcepoll=true', wf_img('skins/refresh.gif') . ' ' . __('Force query'), false, 'ubButton');
             if (!empty($availOnuCache)) {
                 $result.=wf_Link(self::URL_ME . '&unknownonulist=true', wf_img('skins/question.png') . ' ' . __('Unknown ONU'), false, 'ubButton');
             }
@@ -1269,9 +1371,8 @@ class PONizer {
                 $result.=wf_Link(self::URL_ME . '&fdbcachelist=true', wf_img('skins/fdbmacsearch.png') . ' ' . __('Current FDB cache'), false, 'ubButton');
             }
         } else {
-
             $result.=wf_BackLink(self::URL_ME);
-            $result.= wf_Link(self::URL_ME . '&forcepoll=true', wf_img('skins/refresh.gif') . ' ' . __('Force query'), false, 'ubButton');
+            $result.= wf_Link(self::URL_ME . '&forcepoll=true&uol=true', wf_img('skins/refresh.gif') . ' ' . __('Force query'), false, 'ubButton');
         }
         $result.=wf_delimiter();
         return ($result);
@@ -1308,7 +1409,11 @@ class PONizer {
         }
 
         $columns[] = 'Model';
-        $columns[] = 'IP';
+        if (@$this->altCfg['PON_ONUIPASIF']) {
+            $columns[] = 'Interface';
+        } else {
+            $columns[] = 'IP';
+        }
         $columns[] = 'MAC';
         $columns[] = 'Signal';
 
@@ -1640,6 +1745,56 @@ class PONizer {
     }
 
     /**
+     * Checks is ONU really associated with some OLT
+     * 
+     * @param string $onuMac
+     * @param  int $oltId
+     * @return bool
+     */
+    protected function checkOnuOLTid($onuMac, $oltId) {
+        $result = true;
+        if (!empty($this->allOnu)) {
+            foreach ($this->allOnu as $io => $each) {
+                if ($each['mac'] == $onuMac) {
+                    if ($oltId != $each['oltid']) {
+                        $result = false;
+                    }
+                }
+            }
+        }
+        return ($result);
+    }
+
+    /**
+     * Checks is ONU associated with some login or not
+     * 
+     * @param int $onuId
+     * @param string $userLogin
+     * 
+     * @return bool
+     */
+    protected function checkOnuUserAssign($onuId, $userLogin) {
+        $result = true;
+        if (@$this->altCfg['PON_USERLINK_CHECK']) {
+            //ONU is registered
+            if ($onuId != 0) {
+                @$associatedUserLogin = $this->allOnu[$onuId]['login'];
+            } else {
+                $associatedUserLogin = '';
+            }
+
+            if (!empty($associatedUserLogin)) {
+                if ($userLogin != $associatedUserLogin) {
+                    $result = false;
+                } else {
+                    $result = true;
+                }
+            }
+        }
+        return ($result);
+    }
+
+    /**
      * Renders json for current all OLT FDB list
      * 
      * @return void
@@ -1666,16 +1821,27 @@ class PONizer {
                         foreach ($fileData as $onuMac => $onuTmp) {
                             if (!empty($onuTmp)) {
                                 foreach ($onuTmp as $id => $onuData) {
+                                    $onuRealId = $this->getONUIDByMAC($onuMac);
+                                    if ($onuRealId) {
+                                        $associatedUserLogin = $this->allOnu[$onuRealId]['login'];
+                                    } else {
+                                        $associatedUserLogin = '';
+                                    }
                                     $userLogin = (isset($allUserMac[$onuData['mac']])) ? $allUserMac[$onuData['mac']] : '';
+
+                                    $onuLink = ($onuRealId) ? wf_Link(self::URL_ME . '&editonu=' . $onuRealId, $id) : $id;
                                     @$userAddress = $allAddress[$userLogin];
                                     @$userRealName = $allRealnames[$userLogin];
                                     @$userTariff = $allUserTariffs[$userLogin];
                                     $userLink = (!empty($userLogin)) ? wf_Link('?module=userprofile&username=' . $userLogin, web_profile_icon() . ' ' . $userAddress) : '';
-                                    $data[] = $oltDesc;
+                                    $oltCheck = (!$this->checkOnuOLTid($onuMac, $oltId)) ? ' ' . wf_img('skins/createtask.gif', __('Wrong OLT')) : '';
+                                    $userCheck = (!$this->checkOnuUserAssign($onuRealId, $userLogin)) ? ' ' . wf_img('skins/createtask.gif', __('Wrong associated user')) : '';
+
+                                    $data[] = $oltDesc . $oltCheck;
                                     $data[] = $onuMac;
-                                    $data[] = $id;
+                                    $data[] = $onuLink;
                                     $data[] = $onuData['vlan'];
-                                    $data[] = $onuData['mac'];
+                                    $data[] = $onuData['mac'] . $userCheck;
                                     $data[] = $userLink;
                                     $data[] = $userRealName;
                                     $data[] = $userTariff;

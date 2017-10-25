@@ -106,7 +106,7 @@ function web_trigger($value) {
  * @param string $olddata
  * @return string
  */
-function web_EditorStringDataForm($fieldnames, $fieldkey, $useraddress, $olddata = '') {
+function web_EditorStringDataForm($fieldnames, $fieldkey, $useraddress, $olddata = '', $pattern = '') {
     $field1 = $fieldnames['fieldname1'];
     $field2 = $fieldnames['fieldname2'];
 
@@ -119,7 +119,7 @@ function web_EditorStringDataForm($fieldnames, $fieldkey, $useraddress, $olddata
     $rows.= wf_TableRow($cells);
 
     $cells = wf_TableCell($field2, '', 'row2');
-    $cells.= wf_TableCell(wf_TextInput($fieldkey, '', '', false, ''), '', 'row3');
+    $cells.= wf_TableCell(wf_TextInput($fieldkey, '', '', false, '', $pattern), '', 'row3');
     $rows.= wf_TableRow($cells);
     $form = wf_TableBody($rows, '100%', 0);
     $form.= wf_Submit(__('Change'));
@@ -515,7 +515,7 @@ function web_EditorCashDataForm($fieldnames, $fieldkey, $useraddress, $olddata =
     $radio.=$setCashControl;
 
     //cash input widget
-    $cashInputControl = wf_tag('input', false, '', ' type="text" name="' . $fieldkey . '" size="5" id="cashfield" ' . $cashfieldanchor . '');
+    $cashInputControl = wf_tag('input', false, '', ' type="text" name="' . $fieldkey . '"autofocus size="5" id="cashfield" ' . $cashfieldanchor . '');
     $cashInputControl.= ' ' . __('The expected payment') . ': ' . $tariff_price;
 
 
@@ -622,13 +622,27 @@ function zb_TariffsGetAll() {
  * @return string
  */
 function web_tariffselector($fieldname = 'tariffsel') {
+    global $ubillingConfig;
+    $altCfg = $ubillingConfig->getAlter();
+    if ($altCfg['BRANCHES_ENABLED']) {
+        global $branchControl;
+        $branchControl->loadTariffs();
+    }
+
+
     $alltariffs = zb_TariffsGetAll();
     $options = array();
 
+
     if (!empty($alltariffs)) {
         foreach ($alltariffs as $io => $eachtariff) {
-
-            $options[$eachtariff['name']] = $eachtariff['name'];
+            if ($altCfg['BRANCHES_ENABLED']) {
+                if ($branchControl->isMyTariff($eachtariff['name'])) {
+                    $options[$eachtariff['name']] = $eachtariff['name'];
+                }
+            } else {
+                $options[$eachtariff['name']] = $eachtariff['name'];
+            }
         }
     }
 
@@ -643,6 +657,13 @@ function web_tariffselector($fieldname = 'tariffsel') {
  * @return string
  */
 function web_tariffselectorNoLousy($fieldname = 'tariffsel') {
+    global $ubillingConfig;
+    $altCfg = $ubillingConfig->getAlter();
+    if ($altCfg['BRANCHES_ENABLED']) {
+        global $branchControl;
+        $branchControl->loadTariffs();
+    }
+
     $alltariffs = zb_TariffsGetAll();
     $allousytariffs = zb_LousyTariffGetAll();
     $options = array();
@@ -650,7 +671,13 @@ function web_tariffselectorNoLousy($fieldname = 'tariffsel') {
     if (!empty($alltariffs)) {
         foreach ($alltariffs as $io => $eachtariff) {
             if (!zb_LousyCheckTariff($eachtariff['name'], $allousytariffs)) {
-                $options[$eachtariff['name']] = $eachtariff['name'];
+                if ($altCfg['BRANCHES_ENABLED']) {
+                    if ($branchControl->isMyTariff($eachtariff['name'])) {
+                        $options[$eachtariff['name']] = $eachtariff['name'];
+                    }
+                } else {
+                    $options[$eachtariff['name']] = $eachtariff['name'];
+                }
             }
         }
     }
@@ -1489,7 +1516,7 @@ function web_DirectionsEditForm($ruleid) {
  */
 function web_PaymentsShow($query) {
     $alter_conf = rcms_parse_ini_file(CONFIG_PATH . 'alter.ini');
-    $alladrs = zb_AddressGetFulladdresslist();
+    $alladrs = zb_AddressGetFulladdresslistCached();
     $allrealnames = zb_UserGetAllRealnames();
     $alltypes = zb_CashGetAllCashTypes();
     $allapayments = simple_queryall($query);
@@ -1978,97 +2005,6 @@ function web_NasAddForm() {
     $form = wf_Form('', 'POST', $inputs, 'glamour');
 
     return($form);
-}
-
-/**
- * Native database backup function. Stores dump in filesystem and returns it name.
- * 
- * @param string $tables
- * @param bool   $silent
- * @return string
- */
-function zb_backup_tables($tables = '*', $silent = false) {
-    $alter_conf = rcms_parse_ini_file(CONFIG_PATH . "alter.ini");
-    $exclude_tables = $alter_conf['NOBACKUPTABLESLIKE'];
-    $exclude_tables = explode(',', $exclude_tables);
-
-    if ($tables == '*') {
-        $tables = array();
-        $result = mysql_query('SHOW TABLES');
-        while ($row = mysql_fetch_row($result)) {
-            $tables[] = $row[0];
-        }
-    } else {
-        $tables = is_array($tables) ? $tables : explode(',', $tables);
-    }
-
-    $return = '';
-
-    //exclude some tables
-    if (!empty($exclude_tables)) {
-        foreach ($exclude_tables as $oo => $eachexclude) {
-            foreach ($tables as $io => $eachtable) {
-                if (ispos($eachtable, $eachexclude)) {
-                    unset($tables[$io]);
-                }
-            }
-        }
-    }
-
-    //cycle through
-    foreach ($tables as $table) {
-        $result = mysql_query('SELECT * FROM ' . $table);
-        $num_fields = mysql_num_fields($result);
-        //$return.= 'DROP TABLE '.$table.';';
-        $row2 = mysql_fetch_row(mysql_query('SHOW CREATE TABLE ' . $table));
-        $return.= "\n\n" . $row2[1] . ";\n\n";
-
-        for ($i = 0; $i < $num_fields; $i++) {
-            while ($row = mysql_fetch_row($result)) {
-                $return.= 'INSERT INTO ' . $table . ' VALUES(';
-                for ($j = 0; $j < $num_fields; $j++) {
-                    $row[$j] = addslashes($row[$j]);
-                    @$row[$j] = ereg_replace("\n", "\\n", $row[$j]);
-                    if (isset($row[$j])) {
-                        $return.= '"' . $row[$j] . '"';
-                    } else {
-                        $return.= '""';
-                    }
-                    if ($j < ($num_fields - 1)) {
-                        $return.= ',';
-                    }
-                }
-                $return.= ");\n";
-            }
-        }
-        $return.="\n\n\n";
-    }
-
-    //save file
-    if (ispos($alter_conf['NOBACKUPTABLESLIKE'], 'weblogs')) {
-        $return.="
-   CREATE TABLE IF NOT EXISTS `weblogs` (
-  `id` int(11) NOT NULL auto_increment,
-  `date` datetime NOT NULL,
-  `admin` varchar(45) default NULL,
-  `ip` varchar(64) default NULL,
-  `event` varchar(255) default NULL,
-  PRIMARY KEY  (`id`),
-  KEY `date` (`date`)
-  ) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
-               ";
-    }
-    $backname = DATA_PATH . 'backups/sql/ubilling-db-backup-' . date("Y-m-d_H:i:s", time()) . '.sql';
-    $handle = fopen($backname, 'w+');
-    fwrite($handle, $return);
-    fclose($handle);
-
-    if (!$silent) {
-        show_window(__('Backup saved'), $backname);
-    }
-
-    log_register("BACKUP CREATE `" . $backname . "`");
-    return ($backname);
 }
 
 /**
@@ -2822,7 +2758,7 @@ function web_UserArrayShower($usersarr) {
             $tablecells = wf_TableCell($profilelink);
             $tablecells.=wf_TableCell(@$alladdress[$eachlogin]);
             $tablecells.=wf_TableCell(@$allrealnames[$eachlogin]);
-            $tablecells.=wf_TableCell(@$alluserips[$eachlogin], '', '', 'sorttable_customkey="' . ip2int(@$alluserips[$eachlogin]) . '"');
+            $tablecells.=wf_TableCell(@$alluserips[$eachlogin], '', '', 'sorttable_customkey="' . ip2long(@$alluserips[$eachlogin]) . '"');
             $tablecells.=wf_TableCell(@$alltariffs[$eachlogin]);
             if ($alterconf['ONLINE_LAT']) {
                 if (isset($alluserlat[$eachlogin])) {
@@ -2909,6 +2845,8 @@ function zb_BillingCheckUpdates() {
 function zb_BillingStats($quiet = false) {
     $ubstatsurl = 'http://stats.ubilling.net.ua/';
     $statsflag = 'exports/NOTRACK';
+    $cache = new UbillingCache();
+    $cacheTime = 3600;
     //detect host id
     $hostid_q = "SELECT * from `ubstats` WHERE `key`='ubid'";
     $hostid = simple_query($hostid_q);
@@ -2936,39 +2874,47 @@ function zb_BillingStats($quiet = false) {
         }
         rcms_redirect("?module=report_sysload");
     }
-    //detect total user count
-    $usercount_q = "SELECT COUNT(`login`) from `users`";
-    $usercount = simple_query($usercount_q);
-    $usercount = $usercount['COUNT(`login`)'];
-
-    //detect tariffs count
-    $tariffcount_q = "SELECT COUNT(`name`) from `tariffs`";
-    $tariffcount = simple_query($tariffcount_q);
-    $tariffcount = $tariffcount['COUNT(`name`)'];
-
-    //detect nas count
-    $nascount_q = "SELECT COUNT(`id`) from `nas`";
-    $nascount = simple_query($nascount_q);
-    $nascount = $nascount['COUNT(`id`)'];
-
-    //detect payments count
-    $paycount_q = "SELECT COUNT(`id`) from `payments`";
-    $paycount = simple_query($paycount_q);
-    $paycount = $paycount['COUNT(`id`)'];
-    $paycount = $paycount / 100;
-    $paycount = round($paycount);
-
-    //detect ubilling actions count
-    $eventcount_q = "SELECT COUNT(`id`) from `weblogs`";
-    $eventcount = simple_query($eventcount_q);
-    $eventcount = $eventcount['COUNT(`id`)'];
-    $eventcount = $eventcount / 100;
-    $eventcount = round($eventcount);
-
     //detect ubilling version
     $releaseinfo = file_get_contents("RELEASE");
     $ubversion = explode(' ', $releaseinfo);
     $ubversion = vf($ubversion[0], 3);
+
+    $ubillingInstanceStats = $cache->get('UBINSTANCE', $cacheTime);
+    if (empty($ubillingInstanceStats)) {
+        //detect total user count
+        $usercount_q = "SELECT COUNT(`login`) from `users`";
+        $usercount = simple_query($usercount_q);
+        $usercount = $usercount['COUNT(`login`)'];
+
+        //detect tariffs count
+        $tariffcount_q = "SELECT COUNT(`name`) from `tariffs`";
+        $tariffcount = simple_query($tariffcount_q);
+        $tariffcount = $tariffcount['COUNT(`name`)'];
+
+        //detect nas count
+        $nascount_q = "SELECT COUNT(`id`) from `nas`";
+        $nascount = simple_query($nascount_q);
+        $nascount = $nascount['COUNT(`id`)'];
+
+        //detect payments count
+        $paycount_q = "SELECT COUNT(`id`) from `payments`";
+        $paycount = simple_query($paycount_q);
+        $paycount = $paycount['COUNT(`id`)'];
+        $paycount = $paycount / 100;
+        $paycount = round($paycount);
+
+        //detect ubilling actions count
+        $eventcount_q = "SELECT COUNT(`id`) from `weblogs`";
+        $eventcount = simple_query($eventcount_q);
+        $eventcount = $eventcount['COUNT(`id`)'];
+        $eventcount = $eventcount / 100;
+        $eventcount = round($eventcount);
+
+        $ubillingInstanceStats = '?u=' . $thisubid . 'x' . $usercount . 'x' . $tariffcount . 'x' . $nascount . 'x' . $paycount . 'x' . $eventcount . 'x' . $ubversion;
+        $cache->set('UBINSTANCE', $ubillingInstanceStats, $cacheTime);
+    }
+
+
 
     $releasebox = wf_tag('span', false, '', 'id="lastrelease"');
     $releasebox.=wf_tag('span', true) . wf_tag('br');
@@ -2983,14 +2929,23 @@ function zb_BillingStats($quiet = false) {
     $ubstatsinputs.=' ' . wf_Submit('Save');
     $ubstatsform = wf_Form("", 'POST', $ubstatsinputs, 'glamour');
     $ubstatsform.= wf_CleanDiv();
-    $statsurl = $ubstatsurl . '?u=' . $thisubid . 'x' . $usercount . 'x' . $tariffcount . 'x' . $nascount . 'x' . $paycount . 'x' . $eventcount . 'x' . $ubversion;
+    $statsurl = $ubstatsurl . $ubillingInstanceStats;
     $tracking_code = wf_tag('div', false, '', 'style="display:none;"') . wf_tag('iframe', false, '', 'src="' . $statsurl . '" width="1" height="1" frameborder="0"') . wf_tag('iframe', true) . wf_tag('div', true);
     if ($quiet == false) {
         show_window(__('Billing info'), $ubstatsform);
     }
 
     if ($thiscollect) {
-        show_window('', $tracking_code);
+        if (isset($_SERVER['SERVER_PORT']) AND ( @$_SERVER['SERVER_PORT'] == 80)) {
+            show_window('', $tracking_code);
+        } else {
+            if (extension_loaded('curl')) {
+                $curlStats = curl_init($statsurl);
+                curl_setopt($curlStats, CURLOPT_RETURNTRANSFER, 1);
+                $output = curl_exec($curlStats);
+                curl_close($curlStats);
+            }
+        }
     }
 }
 
@@ -4601,10 +4556,28 @@ function zb_CheckPHPExtensions() {
             $allRequired = explodeRows($allRequired);
             if (!empty($allRequired)) {
                 foreach ($allRequired as $io => $each) {
-                    if (!extension_loaded($each)) {
-                        $result.=wf_tag('span', false, 'alert_error') . __('PHP extension not found') . ': ' . $each . wf_tag('span', true);
-                    } else {
-                        $result.=wf_tag('span', false, 'alert_success') . __('PHP extension loaded') . ': ' . $each . wf_tag('span', true);
+                    if (!empty($each)) {
+                        $each = trim($each);
+                        $notice = '';
+                        if (!extension_loaded($each)) {
+                            switch ($each) {
+                                case 'mysql':
+                                    $notice = ' ' . __('Deprecated in') . '  PHP 7.0';
+                                    break;
+                                case 'ereg':
+                                    $notice = ' ' . __('Deprecated in') . '  PHP 7.0';
+                                    break;
+                                case 'memcache':
+                                    $notice = ' ' . __('Deprecated in') . '  PHP 7.0';
+                                    break;
+                                case 'xhprof':
+                                    $notice = ' ' . __('May require manual installation');
+                                    break;
+                            }
+                            $result.=wf_tag('span', false, 'alert_error') . __('PHP extension not found') . ': ' . $each . $notice . wf_tag('span', true);
+                        } else {
+                            $result.=wf_tag('span', false, 'alert_success') . __('PHP extension loaded') . ': ' . $each . wf_tag('span', true);
+                        }
                     }
                 }
             }
@@ -4682,6 +4655,41 @@ function web_MemCachedRenderStats() {
 }
 
 /**
+ * Returns redis usage stats
+ * 
+ * @global object $ubillingConfig
+ * @return string
+ */
+function web_RedisRenderStats() {
+    global $ubillingConfig;
+    $altCfg = $ubillingConfig->getAlter();
+    $result = '';
+    $redisHost = 'localhost';
+    $redisdPort = 6379;
+    if (isset($altCfg['REDIS_SERVER'])) {
+        $redisHost = $altCfg['REDIS_SERVER'];
+    }
+    if (isset($altCfg['REDIS_PORT'])) {
+        $redisdPort = $altCfg['REDIS_PORT'];
+    }
+    $redis = new Redis();
+    $redis->connect($redisHost, $redisdPort);
+    $rawStats = $redis->info();
+    $cells = wf_TableCell(__('Parameter'));
+    $cells.= wf_TableCell(__('Value'));
+    $rows = wf_TableRow($cells, 'row1');
+    if (!empty($rawStats)) {
+        foreach ($rawStats as $param => $value) {
+            $cells = wf_TableCell($param);
+            $cells.= wf_TableCell($value);
+            $rows.= wf_TableRow($cells, 'row3');
+        }
+    }
+    $result = wf_TableBody($rows, '100%', 0, '');
+    return ($result);
+}
+
+/**
  * Calculates percent value
  * 
  * @param float $sum
@@ -4692,6 +4700,22 @@ function web_MemCachedRenderStats() {
 function zb_Percent($sum, $percent) {
     // и не надо ржать, я реально не могу запомнить чего куда делить и умножать
     $result = $percent / 100 * $sum;
+    return ($result);
+}
+
+/**
+ * Counts percentage between two values
+ * 
+ * @param float $valueTotal
+ * @param float $value
+ * 
+ * @return float
+ */
+function zb_PercentValue($valueTotal, $value) {
+    $result = 0;
+    if ($valueTotal != 0) {
+        $result = round((($value * 100) / $valueTotal), 2);
+    }
     return ($result);
 }
 
@@ -4789,4 +4813,81 @@ function zb_ListLoadedModules() {
     $result = wf_TableBody($rows, '100%', 0, 'sortable');
     $result.=__('Total') . ': ' . $moduleCount;
     return ($result);
+}
+
+/**
+ * Returns current cache info in human readable view with ajax controls
+ * 
+ * @return string
+ */
+function zb_ListCacheInformRenderContainer() {
+    global $ubillingConfig;
+    $alterconf = $ubillingConfig->getAlter();
+    $messages = new UbillingMessageHelper();
+    $result = '';
+    $result.= wf_AjaxLoader();
+    $result.= wf_AjaxLink('?module=report_sysload&ajaxcacheinfo=true', __('Cache information'), 'cachconteiner', false, 'ubButton');
+    if ($alterconf['UBCACHE_STORAGE'] == 'memcached') {
+        $result.= wf_AjaxLink('?module=report_sysload&ajaxmemcachedstats=true', __('Stats') . ' ' . __('Memcached'), 'cachconteiner', false, 'ubButton');
+    }
+    if ($alterconf['UBCACHE_STORAGE'] == 'redis') {
+        $result.= wf_AjaxLink('?module=report_sysload&ajaxredisstats=true', __('Stats') . ' ' . __('Redis'), 'cachconteiner', false, 'ubButton');
+    }
+    $result.= wf_AjaxLink('?module=report_sysload&ajaxcachedata=true', __('Cache data'), 'cachconteiner', false, 'ubButton');
+    $result.= wf_AjaxLink('?module=report_sysload&ajaxcacheclear=true', __('Clear all cache'), 'cachconteiner', true, 'ubButton');
+    $result.= $messages->getStyledMessage(__('Using system caching engine storage') . ': ' . wf_tag('b') . $alterconf['UBCACHE_STORAGE'] . wf_tag('b', true), 'info');
+    $result.=wf_tag('br');
+    $result.= wf_tag('table', false, 'sortable', 'width="100%" border="0" id="cachconteiner"') . zb_ListCacheInform() . wf_tag('table', true);
+    return ($result);
+}
+
+/**
+ * Renders list of cache data
+ * 
+ * @global object $system
+ * 
+ * @return string
+ */
+function zb_ListCacheInform($param = '') {
+    $cache = new UbillingCache();
+    $messages = new UbillingMessageHelper();
+    ($param == 'clear') ? $cache->deleteAllcache() : '';
+    $data = ($param == 'data') ? $cache->getAllcache($param) : $cache->getAllcache();
+    $result = '';
+    if (!empty($data) and $param != 'clear') {
+        $cells = wf_TableCell(__('ID'));
+        $cells.= wf_TableCell(__('KEY'));
+        if ($param == 'data') {
+            $cells.= wf_TableCell(__('Data'));
+        }
+        $rows = wf_TableRow($cells, 'row1');
+
+        foreach ($data as $id => $key) {
+            $cells = wf_TableCell($id);
+            if ($param == 'data') {
+                $cells.= wf_TableCell($key['key'], '', '', 'sorttable_customkey="' . $id . '"');
+                //$value = (is_array($key['value'])) ? serialize($key['value']) : $key['value'];
+                $value = wf_tag('pre') . print_r($key['value'], true) . wf_tag('pre', true);
+                $cells.= wf_TableCell(wf_modal(__('Cache data'), __('Cache information') . ': ' . $key['key'], $value, 'ubButton', '800', '600'));
+            } else {
+                $cells.= wf_TableCell($key, '', '', 'sorttable_customkey="' . $id . '"');
+            }
+            $rows.= wf_TableRow($cells, 'row3');
+        }
+        $result .= $rows;
+    } elseif (empty($data) and $param == 'clear') {
+        $result.= $messages->getStyledMessage(__('Cache cleared'), 'success');
+    }
+    return ($result);
+}
+
+/**
+ * Downloads and unpacks phpsysinfo distro
+ * 
+ * @return void
+ */
+function zb_InstallPhpsysinfo() {
+    $upd = new UbillingUpdateStuff();
+    $upd->downloadRemoteFile('http://ubilling.net.ua/packages/phpsysinfo.tar.gz', 'exports/', 'phpsysinfo.tar.gz');
+    $upd->extractTgz('exports/phpsysinfo.tar.gz', 'phpsysinfo/');
 }

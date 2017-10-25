@@ -17,7 +17,7 @@ include('api/libs/api.userdata.php');
 include('api/libs/api.usersearch.php');
 include('api/libs/api.address.php');
 include('api/libs/api.telepathy.php');
-include('api/libs/api.teskman.php');
+include('api/libs/api.taskman.php');
 include('api/libs/api.networking.php');
 include('api/libs/api.dhcp.php');
 include('api/libs/api.userreg.php');
@@ -37,7 +37,6 @@ include('api/libs/api.corporate.php');
 include('api/libs/api.lousytariffs.php');
 include('api/libs/api.banksta.php');
 include('api/libs/api.templatize.php');
-include('api/libs/api.ymaps.php');
 include('api/libs/api.custmaps.php');
 include('api/libs/api.deploy.php');
 include('api/libs/api.crm.php');
@@ -92,14 +91,25 @@ include('api/libs/api.telegram.php');
 include('api/libs/api.senddog.php');
 include('api/libs/api.smszilla.php');
 include('api/libs/api.tsupport.php');
+include('api/libs/api.asterisk.php');
 include('api/libs/api.policedog.php');
 include('api/libs/api.branches.php');
 include('api/libs/api.selling.php');
 include('api/libs/api.printcard.php');
 include('api/libs/api.generatecard.php');
 include('api/vendor/fpdf/fpdf.php');
-include ('api/libs/api.updates.php');
-
+include('api/libs/api.updates.php');
+include('api/libs/api.wdyc.php');
+include('api/libs/api.mapscommon.php');
+include('api/libs/api.mapscompat.php');
+include('api/libs/api.announcements.php');
+include('api/libs/api.jungen.php');
+include('api/libs/api.nasmon.php');
+include('api/libs/api.ipchange.php');
+include('api/libs/api.messagesqueue.php');
+include('api/libs/api.wcpe.php');
+include('api/libs/api.mtsigmon.php');
+include('api/libs/api.taskbar.php');
 
 /*
  * Initial class creation
@@ -117,4 +127,4 @@ if (@$globalAlter['BRANCHES_ENABLED']) {
     $branchControl->accessControl();
 }
     
-
+include('api/api.autolader.php');

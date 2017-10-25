@@ -80,6 +80,13 @@ class Warehouse {
     protected $allReserve = array();
 
     /**
+     * Contains previous reservation history
+     *
+     * @var array
+     */
+    protected $allReserveHistory = array();
+
+    /**
      * Available unit types as unittype=>localized name
      *
      * @var array
@@ -128,8 +135,16 @@ class Warehouse {
     const URL_RESERVE = 'reserve=true';
     const PHOTOSTORAGE_SCOPE = 'WAREHOUSEITEMTYPE';
 
-    public function __construct() {
+    /**
+     * Creates new warehouse instance
+     * 
+     * @param type $taskid
+     * 
+     * @return void
+     */
+    public function __construct($taskid = '') {
         $this->loadAltCfg();
+        $this->loadOutOperations($taskid);
         $this->setUnitTypes();
         $this->setOutDests();
         $this->setSup();
@@ -140,9 +155,11 @@ class Warehouse {
         $this->loadItemTypes();
         $this->loadStorages();
         $this->loadContractors();
-        $this->loadInOperations();
-        $this->loadOutOperations();
-        $this->loadReserve();
+        if (empty($taskid)) {
+            $this->loadReserve();
+            $this->loadReserveHistory();
+            $this->loadInOperations();
+        }
     }
 
     /**
@@ -304,10 +321,14 @@ class Warehouse {
     /**
      * Loads existing outcoming operations from database
      * 
+     * @param int $taskid existing taskId
+     * 
      * @return void
      */
-    protected function loadOutOperations() {
-        $query = "SELECT * from `wh_out`";
+    protected function loadOutOperations($taskid = '') {
+        $taskid = vf($taskid, 3);
+        $where = (!empty($taskid)) ? "WHERE `desttype`='task' AND `destparam`='" . $taskid . "'" : '';
+        $query = "SELECT * from `wh_out` " . $where . ";";
         $all = simple_queryall($query);
         if (!empty($all)) {
             foreach ($all as $io => $each) {
@@ -332,6 +353,21 @@ class Warehouse {
     }
 
     /**
+     * Loads reserve history logs from database
+     * 
+     * @return void
+     */
+    protected function loadReserveHistory() {
+        $query = "SELECT * from `wh_reshist` ORDER BY `id` DESC";
+        $all = simple_queryall($query);
+        if (!empty($all)) {
+            foreach ($all as $io => $each) {
+                $this->allReserveHistory[$each['id']] = $each;
+            }
+        }
+    }
+
+    /**
      * Returns count of itemtypes reserved on storage if available
      * 
      * @param int $storageId
@@ -351,6 +387,28 @@ class Warehouse {
             }
         }
         return ($result);
+    }
+
+    /**
+     * Stores reservation history log record into database
+     * 
+     * @param string $type - create/update/delete
+     * @param int $storageId
+     * @param int $itemtypeId
+     * @param float $count
+     * @param int $employeeId
+     */
+    protected function reservePushLog($type, $storageId = '', $itemtypeId = '', $count = '', $employeeId = '') {
+        $curdate = curdatetime();
+        $type = vf($type);
+        $adminLogin = mysql_real_escape_string(whoami());
+        $storageId = "'" . vf($storageId, 3) . "'";
+        $itemtypeId = "'" . vf($itemtypeId, 3) . "'";
+        $count = "'" . mysql_real_escape_string($count) . "'";
+        $employeeId = "'" . vf($employeeId, 3) . "'";
+        $query = "INSERT INTO `wh_reshist` (`id`,`date`,`type`,`storageid`,`itemtypeid`,`count`,`employeeid`,`admin`) VALUES ";
+        $query.= "(NULL,'" . $curdate . "','" . $type . "'," . $storageId . "," . $itemtypeId . "," . $count . "," . $employeeId . ",'" . $adminLogin . "');";
+        nr_query($query);
     }
 
     /**
@@ -387,6 +445,7 @@ class Warehouse {
                         nr_query($query);
                         $newId = simple_get_lastid('wh_reserve');
                         log_register('WAREHOUSE RESERVE CREATE [' . $newId . '] ITEM [' . $itemtypeId . '] COUNT `' . $count . '` EMPLOYEE [' . $employeeId . ']');
+                        $this->reservePushLog('create', $storageId, $itemtypeId, $count, $employeeId);
                     } else {
                         $result = $this->messages->getStyledMessage(__('The balance of goods and materials in stock is less than the amount') . ' (' . $countF . ' > ' . $itemtypeRemains . '-' . $alreadyReserved . ')', 'error');
                     }
@@ -468,6 +527,10 @@ class Warehouse {
     public function reserveDelete($id) {
         $id = vf($id, 3);
         if (isset($this->allReserve[$id])) {
+            $reserveData = $this->allReserve[$id];
+            if (!empty($reserveData)) {
+                $this->reservePushLog('delete', $reserveData['storageid'], $reserveData['itemtypeid'], $reserveData['count'], $reserveData['employeeid']);
+            }
             $query = "DELETE from `wh_reserve` WHERE `id`='" . $id . "';";
             nr_query($query);
             log_register('WAREHOUSE RESERVE DELETE [' . $id . ']');
@@ -512,13 +575,14 @@ class Warehouse {
                 $reserveData = $this->allReserve[$id];
                 if (!empty($reserveData)) {
                     $reserveStorage = $reserveData['storageid'];
+                    $reserveItemtypeId = $reserveData['itemtypeid'];
                     $count = $_POST['editreservecount'];
                     $countF = mysql_real_escape_string($count);
                     $countF = str_replace(',', '.', $countF);
                     $employeeId = vf($_POST['editreserveemployeeid'], 3);
                     $where = " WHERE `id`='" . $id . "';";
                     $storageRemains = $this->remainsOnStorage($reserveStorage);
-                    @$itemtypeRemains = $storageRemains[$reserveData['itemtypeid']];
+                    @$itemtypeRemains = $storageRemains[$reserveItemtypeId];
                     if (empty($itemtypeRemains)) {
                         $itemtypeRemains = 0;
                     }
@@ -529,6 +593,7 @@ class Warehouse {
                         simple_update_field('wh_reserve', 'employeeid', $employeeId, $where);
                         simple_update_field('wh_reserve', 'count', $countF, $where);
                         log_register('WAREHOUSE RESERVE EDIT [' . $id . ']  COUNT `' . $count . '` EMPLOYEE [' . $employeeId . ']');
+                        $this->reservePushLog('update', $reserveStorage, $reserveItemtypeId, $count, $employeeId);
                     } else {
                         log_register('WAREHOUSE RESERVE FAIL [' . $id . ']  TO MANY  COUNT `' . $count . '` EMPLOYEE [' . $employeeId . ']');
                     }
@@ -557,10 +622,11 @@ class Warehouse {
             $rows = wf_TableRow($cells, 'row1');
 
             foreach ($this->allReserve as $io => $each) {
+                $itemTypeLink = wf_Link(self::URL_ME . '&' . self::URL_VIEWERS . '&itemhistory=' . $each['itemtypeid'], @$this->allItemTypeNames[$each['itemtypeid']]);
                 $cells = wf_TableCell($each['id']);
                 $cells.=wf_TableCell(@$this->allStorages[$each['storageid']]);
                 $cells.= wf_TableCell(@$this->allCategories[$this->allItemTypes[$each['itemtypeid']]['categoryid']]);
-                $cells.= wf_TableCell(@$this->allItemTypeNames[$each['itemtypeid']]);
+                $cells.= wf_TableCell($itemTypeLink);
                 $cells.= wf_TableCell($each['count'] . ' ' . @$this->unitTypes[$this->allItemTypes[$each['itemtypeid']]['unit']]);
                 $cells.= wf_TableCell(@$this->allEmployee[$each['employeeid']]);
                 $actLinks = wf_JSAlert(self::URL_ME . '&' . self::URL_RESERVE . '&deletereserve=' . $each['id'], web_delete_icon(), $this->messages->getEditAlert()) . ' ';
@@ -569,6 +635,63 @@ class Warehouse {
                 $rows.= wf_TableRow($cells, 'row3');
             }
             $result = wf_TableBody($rows, '100%', 0, 'sortable');
+        } else {
+            $result = $this->messages->getStyledMessage(__('Nothing found'), 'info');
+        }
+        return ($result);
+    }
+
+    /**
+     * Renders json list of available reservation history log entries
+     * 
+     * @return void
+     */
+    public function reserveHistoryAjaxReply() {
+        $json = new wf_JqDtHelper();
+        if (!empty($this->allReserveHistory)) {
+            $employeeLogins = unserialize(ts_GetAllEmployeeLoginsCached());
+            foreach ($this->allReserveHistory as $io => $each) {
+                $operationType = '';
+                $administratorName = (isset($employeeLogins[$each['admin']])) ? $employeeLogins[$each['admin']] : $each['admin'];
+                switch ($each['type']) {
+                    case 'create':
+                        $operationType = __('Created');
+                        break;
+                    case 'update':
+                        $operationType = __('Updated');
+                        break;
+                    case 'delete':
+                        $operationType = __('Deleted');
+                        break;
+                }
+                $data[] = $each['id'];
+                $data[] = $each['date'];
+                $data[] = $operationType;
+                $data[] = @$this->allStorages[$each['storageid']];
+                $data[] = @$this->allCategories[$this->allItemTypes[$each['itemtypeid']]['categoryid']];
+                $data[] = @$this->allItemTypeNames[$each['itemtypeid']];
+                $data[] = $each['count'] . ' ' . @$this->unitTypes[$this->allItemTypes[$each['itemtypeid']]['unit']];
+                $data[] = @$this->allEmployee[$each['employeeid']];
+                $data[] = $administratorName;
+
+                $json->addRow($data);
+                unset($data);
+            }
+        }
+        $json->getJson();
+    }
+
+    /**
+     * Renders reservation history log
+     * 
+     * @return string
+     */
+    public function reserveRenderHistory() {
+        $result = '';
+        if (!empty($this->allReserveHistory)) {
+            $colums = array('ID', 'Date', 'Type', 'Warehouse storage', 'Category', 'Warehouse item type', 'Count', 'Employee', 'Admin');
+            $opts = '"order": [[ 0, "desc" ]]';
+            $result.= wf_JqDtLoader($colums, self::URL_ME . '&' . self::URL_RESERVE . '&reshistajlist=true', false, __('Reserve'), 10, $opts);
         } else {
             $result = $this->messages->getStyledMessage(__('Nothing found'), 'info');
         }
@@ -866,9 +989,11 @@ class Warehouse {
 
         if (!empty($this->allItemTypes)) {
             foreach ($this->allItemTypes as $io => $each) {
+                $itemTypeLink = wf_Link(self::URL_ME . '&' . self::URL_VIEWERS . '&itemhistory=' . $each['id'], $each['name']);
+
                 $cells = wf_TableCell($each['id']);
                 $cells.= wf_TableCell(@$this->allCategories[$each['categoryid']]);
-                $cells.= wf_TableCell($each['name']);
+                $cells.= wf_TableCell($itemTypeLink);
                 $cells.= wf_TableCell(@$this->unitTypes[$each['unit']]);
                 $cells.= wf_TableCell($each['reserve']);
                 $actLinks = wf_JSAlertStyled(self::URL_ME . '&' . self::URL_ITEMTYPES . '&deleteitemtype=' . $each['id'], web_delete_icon(), $this->messages->getDeleteAlert());
@@ -1351,8 +1476,10 @@ class Warehouse {
         $priceF = mysql_real_escape_string($priceF);
         $notes = mysql_real_escape_string($notes);
         $barcode = mysql_real_escape_string($barcode);
-        $query = "INSERT INTO `wh_in` (`id`, `date`, `itemtypeid`, `contractorid`, `count`, `barcode`, `price`, `storageid`, `notes`) "
-                . "VALUES (NULL, '" . $dateF . "', '" . $itemtypeid . "', '" . $contractorid . "', '" . $countF . "', '" . $barcode . "', '" . $priceF . "', '" . $storageid . "', '" . $notes . "');";
+        $admin = mysql_real_escape_string(whoami());
+
+        $query = "INSERT INTO `wh_in` (`id`, `date`, `itemtypeid`, `contractorid`, `count`, `barcode`, `price`, `storageid`, `notes`,`admin`) "
+                . "VALUES (NULL, '" . $dateF . "', '" . $itemtypeid . "', '" . $contractorid . "', '" . $countF . "', '" . $barcode . "', '" . $priceF . "', '" . $storageid . "', '" . $notes . "','" . $admin . "');";
         nr_query($query);
         $newId = simple_get_lastid('wh_in');
         log_register('WAREHOUSE INCOME CREATE [' . $newId . '] ITEM [' . $itemtypeid . '] COUNT `' . $count . '` PRICE `' . $price . '`');
@@ -1428,6 +1555,9 @@ class Warehouse {
         if (isset($this->allIncoming[$id])) {
             $operationData = $this->allIncoming[$id];
 
+            $employeeLogins = unserialize(ts_GetAllEmployeeLoginsCached());
+            $administratorName = (isset($employeeLogins[$operationData['admin']])) ? $employeeLogins[$operationData['admin']] : $operationData['admin'];
+
             $cells = wf_TableCell(__('ID') . ' ' . $this->qrControl('in', $id), '30%', 'row2');
             $cells.= wf_TableCell($id);
             $rows = wf_TableRow($cells, 'row3');
@@ -1441,13 +1571,16 @@ class Warehouse {
             } else {
                 $contractorName = @$this->allContractors[$operationData['contractorid']];
             }
+
+            $itemTypeLink = wf_Link(self::URL_ME . '&' . self::URL_VIEWERS . '&itemhistory=' . $operationData['itemtypeid'], @$this->allItemTypeNames[$operationData['itemtypeid']]);
+
             $cells.= wf_TableCell($contractorName);
             $rows.= wf_TableRow($cells, 'row3');
             $cells = wf_TableCell(__('Category'), '30%', 'row2');
             $cells.= wf_TableCell(@$this->allCategories[$this->allItemTypes[$operationData['itemtypeid']]['categoryid']]);
             $rows.= wf_TableRow($cells, 'row3');
             $cells = wf_TableCell(__('Warehouse item type'), '30%', 'row2');
-            $cells.= wf_TableCell(@$this->allItemTypeNames[$operationData['itemtypeid']]);
+            $cells.= wf_TableCell($itemTypeLink);
             $rows.= wf_TableRow($cells, 'row3');
             $cells = wf_TableCell(__('Count'), '30%', 'row2');
             $cells.= wf_TableCell($operationData['count'] . ' ' . $this->unitTypes[$this->allItemTypes[$operationData['itemtypeid']]['unit']]);
@@ -1463,6 +1596,9 @@ class Warehouse {
             $rows.= wf_TableRow($cells, 'row3');
             $cells = wf_TableCell(__('Barcode'), '30%', 'row2');
             $cells.= wf_TableCell($operationData['barcode']);
+            $rows.= wf_TableRow($cells, 'row3');
+            $cells = wf_TableCell(__('Worker'), '30%', 'row2');
+            $cells.= wf_TableCell($administratorName);
             $rows.= wf_TableRow($cells, 'row3');
             $cells = wf_TableCell(__('Notes'), '30%', 'row2');
             $cells.= wf_TableCell($operationData['notes']);
@@ -1893,6 +2029,10 @@ class Warehouse {
         if (isset($this->allOutcoming[$id])) {
             $operationData = $this->allOutcoming[$id];
 
+            $employeeLogins = unserialize(ts_GetAllEmployeeLoginsCached());
+            $administratorName = (isset($employeeLogins[$operationData['admin']])) ? $employeeLogins[$operationData['admin']] : $operationData['admin'];
+            $itemTypeLink = wf_Link(self::URL_ME . '&' . self::URL_VIEWERS . '&itemhistory=' . $operationData['itemtypeid'], @$this->allItemTypeNames[$operationData['itemtypeid']]);
+
             $cells = wf_TableCell(__('ID') . ' ' . $this->qrControl('out', $id), '30%', 'row2');
             $cells.= wf_TableCell($id);
             $rows = wf_TableRow($cells, 'row3');
@@ -1906,7 +2046,7 @@ class Warehouse {
             $cells.= wf_TableCell(@$this->allCategories[$this->allItemTypes[$operationData['itemtypeid']]['categoryid']]);
             $rows.= wf_TableRow($cells, 'row3');
             $cells = wf_TableCell(__('Warehouse item type'), '30%', 'row2');
-            $cells.= wf_TableCell(@$this->allItemTypeNames[$operationData['itemtypeid']]);
+            $cells.= wf_TableCell($itemTypeLink);
             $rows.= wf_TableRow($cells, 'row3');
             $cells = wf_TableCell(__('Count'), '30%', 'row2');
             $cells.= wf_TableCell($operationData['count'] . ' ' . $this->unitTypes[$this->allItemTypes[$operationData['itemtypeid']]['unit']]);
@@ -1919,6 +2059,9 @@ class Warehouse {
             $rows.= wf_TableRow($cells, 'row3');
             $cells = wf_TableCell(__('Warehouse storage'), '30%', 'row2');
             $cells.= wf_TableCell($this->allStorages[$operationData['storageid']]);
+            $rows.= wf_TableRow($cells, 'row3');
+            $cells = wf_TableCell(__('Worker'), '30%', 'row2');
+            $cells.= wf_TableCell($administratorName);
             $rows.= wf_TableRow($cells, 'row3');
             $cells = wf_TableCell(__('Notes'), '30%', 'row2');
             $cells.= wf_TableCell($operationData['notes']);
@@ -1971,6 +2114,7 @@ class Warehouse {
         $priceF = mysql_real_escape_string($price);
         $priceF = str_replace(',', '.', $priceF);
         $notes = mysql_real_escape_string($notes);
+        $admin = mysql_real_escape_string(whoami());
 
         if (isset($this->allStorages[$storageid])) {
             if (isset($this->allItemTypes[$itemtypeid])) {
@@ -1979,8 +2123,8 @@ class Warehouse {
                 $itemsReserved = $this->reserveGet($storageid, $itemtypeid);
                 $realRemains = $itemRemains - $itemsReserved;
                 if ($countF <= $realRemains) {
-                    $query = "INSERT INTO `wh_out` (`id`,`date`,`desttype`,`destparam`,`storageid`,`itemtypeid`,`count`,`price`,`notes`) VALUES "
-                            . "(NULL,'" . $date . "','" . $desttype . "','" . $destparam . "','" . $storageid . "','" . $itemtypeid . "','" . $countF . "','" . $priceF . "','" . $notes . "')";
+                    $query = "INSERT INTO `wh_out` (`id`,`date`,`desttype`,`destparam`,`storageid`,`itemtypeid`,`count`,`price`,`notes`,`admin`) VALUES "
+                            . "(NULL,'" . $date . "','" . $desttype . "','" . $destparam . "','" . $storageid . "','" . $itemtypeid . "','" . $countF . "','" . $priceF . "','" . $notes . "','" . $admin . "')";
                     nr_query($query);
                     $newId = simple_get_lastid('wh_out');
                     log_register('WAREHOUSE OUTCOME CREATE [' . $newId . '] ITEM [' . $itemtypeid . '] COUNT `' . $count . '` PRICE `' . $price . '`');
@@ -2178,6 +2322,7 @@ class Warehouse {
 
             if (!empty($result)) {
                 show_window(__('Stats'), $result);
+                zb_BillingStats(true);
             }
         }
     }
@@ -2202,12 +2347,14 @@ class Warehouse {
                 }
                 break;
 
-            case 'out':if (isset($this->allOutcoming[$id])) {
+            case 'out':
+                if (isset($this->allOutcoming[$id])) {
                     $itemName = $this->allItemTypeNames[$this->allOutcoming[$id]['itemtypeid']];
                     $qr->text($itemName . ' ' . __('Outcoming operation') . '# ' . $id);
                 } else {
                     $qr->text('Wrong ID');
                 }
+                break;
 
             case 'itemtype':
                 if (isset($this->allItemTypeNames[$id])) {
@@ -2291,12 +2438,7 @@ class Warehouse {
         $tmpArr = array();
         $sum = 0;
         if (!empty($this->allOutcoming)) {
-            foreach ($this->allOutcoming as $io => $each) {
-                if (($each['desttype'] == 'task') AND ( $each['destparam'] == $taskid)) {
-                    $tmpArr[$each['id']] = $each;
-                }
-            }
-
+            $tmpArr = $this->allOutcoming;
             if (!empty($tmpArr)) {
                 $cells = wf_TableCell(__('Date'));
                 $cells.= wf_TableCell(__('Warehouse storage'));
@@ -2757,6 +2899,140 @@ class Warehouse {
         }
 
         return ($result);
+    }
+
+    /**
+     * Renders itemtype history with income, outcome and reservation operations
+     * 
+     * @param int $itemtypeId
+     * 
+     * @return void
+     */
+    public function renderItemHistory($itemtypeId) {
+        $itemtypeId = vf($itemtypeId, 3);
+        $result = '';
+        $tmpArr = array();
+        if (isset($this->allItemTypeNames[$itemtypeId])) {
+            $itemTypeName = $this->allItemTypeNames[$itemtypeId];
+            $itemTypeCategory = $this->allCategories[$this->allItemTypes[$itemtypeId]['categoryid']];
+            if (!empty($this->allIncoming)) {
+                foreach ($this->allIncoming as $io => $each) {
+                    if ($each['itemtypeid'] == $itemtypeId) {
+                        $tmpArr[$each['date']]['in'][] = $each;
+                    }
+                }
+            }
+
+            if (!empty($this->allOutcoming)) {
+                foreach ($this->allOutcoming as $io => $each) {
+                    if ($each['itemtypeid'] == $itemtypeId) {
+                        $tmpArr[$each['date']]['out'][] = $each;
+                    }
+                }
+            }
+
+            if (!empty($this->allReserveHistory)) {
+                foreach ($this->allReserveHistory as $io => $each) {
+                    $reserveDate = strtotime($each['date']);
+                    $reserveDate = date("Y-m-d", $reserveDate);
+                    if ($each['itemtypeid'] == $itemtypeId) {
+                        $tmpArr[$reserveDate]['res'][] = $each;
+                    }
+                }
+            }
+
+            if (!empty($tmpArr)) {
+                ksort($tmpArr);
+                $employeeLogins = unserialize(ts_GetAllEmployeeLoginsCached());
+                $cells = wf_TableCell(__('Date'));
+                $cells.= wf_TableCell(__('Type'));
+                $cells.= wf_TableCell(__('Warehouse storage'));
+                $cells.= wf_TableCell(__('Count'));
+                $cells.= wf_TableCell(__('Price'));
+                $cells.= wf_TableCell(__('Actions'));
+                $cells.= wf_TableCell(__('Admin'));
+                $rows = wf_TableRow($cells, 'row1');
+
+                foreach ($tmpArr as $io => $eachDate) {
+                    if (!empty($eachDate)) {
+                        foreach ($eachDate as $opType => $eachPack) {
+                            if (!empty($eachPack)) {
+                                foreach ($eachPack as $ix => $eachOp) {
+                                    $administratorName = (isset($employeeLogins[$eachOp['admin']])) ? $employeeLogins[$eachOp['admin']] : $eachOp['admin'];
+                                    $from = '';
+                                    $to = '';
+                                    $opTypeName = '';
+                                    $opLink = '';
+                                    $itemUnitType = @$this->unitTypes[$this->allItemTypes[$eachOp['itemtypeid']]['unit']];
+
+                                    //incoming ops
+                                    if ($opType == 'in') {
+                                        if ($eachOp['contractorid'] == 0) {
+                                            $from = $eachOp['notes'];
+                                        } else {
+                                            $from = @$this->allContractors[$eachOp['contractorid']];
+                                        }
+                                        $to = $this->allStorages[$eachOp['storageid']];
+                                        $opTypeName = __('Incoming');
+                                        $rowColor = '#009f04';
+                                        $opLink = wf_Link(self::URL_ME . '&' . self::URL_VIEWERS . '&showinid=' . $eachOp['id'], wf_img_sized('skins/whincoming_icon.png', __('Show'), '10', '10'));
+                                    }
+
+                                    //outcoming ops
+                                    if ($opType == 'out') {
+                                        $from = $this->allStorages[$eachOp['storageid']];
+                                        $to = $this->outDests[$eachOp['desttype']] . $this->outDestControl($eachOp['desttype'], $eachOp['destparam']);
+                                        $opTypeName = __('Outcoming');
+                                        $rowColor = '#b50000';
+                                        $opLink = wf_Link(self::URL_ME . '&' . self::URL_VIEWERS . '&showoutid=' . $eachOp['id'], wf_img_sized('skins/whoutcoming_icon.png', __('Show'), '10', '10'));
+                                    }
+
+                                    //reservation ops
+                                    if ($opType == 'res') {
+                                        $from = $this->allStorages[$eachOp['storageid']];
+                                        $to = @$this->allEmployee[$eachOp['employeeid']];
+                                        $opTypeName = __('Reservation');
+
+                                        if ($eachOp['type'] == 'create') {
+                                            $opTypeName.= ' (' . __('Created') . ')';
+                                        }
+                                        if ($eachOp['type'] == 'update') {
+                                            $opTypeName.= ' (' . __('Updated') . ')';
+                                        }
+                                        if ($eachOp['type'] == 'delete') {
+                                            $opTypeName.= ' (' . __('Deleted') . ')';
+                                        }
+                                        $rowColor = '#ff8a00';
+                                    }
+
+                                    //itemtype price calculation
+                                    if (isset($eachOp['price'])) {
+                                        $opPrice = $eachOp['price'] * $eachOp['count'];
+                                    } else {
+                                        $opPrice = 0;
+                                    }
+
+                                    $cells = wf_TableCell(wf_tag('font', false, '', 'color="' . $rowColor . '"') . $eachOp['date'] . wf_tag('font', true));
+                                    $cells.= wf_TableCell(wf_tag('font', false, '', 'color="' . $rowColor . '"') . $opTypeName . wf_tag('font', true) . ' ' . $opLink);
+                                    $cells.= wf_TableCell(@$this->allStorages[$eachOp['storageid']]);
+                                    $cells.= wf_TableCell($eachOp['count'] . ' ' . $itemUnitType);
+                                    $cells.= wf_TableCell($opPrice);
+                                    $cells.= wf_TableCell($from . ' ' . wf_img('skins/arrow_right_green.png') . ' ' . $to);
+                                    $cells.= wf_TableCell($administratorName);
+                                    $rows.= wf_TableRow($cells, 'row3');
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+                $result = wf_TableBody($rows, '100%', 0, 'sortable');
+            }
+            show_window(__('History') . ': ' . $itemTypeCategory . ', ' . $itemTypeName, $result);
+        } else {
+            show_error(__('Something went wrong'));
+        }
     }
 
 }

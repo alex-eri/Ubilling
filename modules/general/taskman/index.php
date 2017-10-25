@@ -53,6 +53,7 @@ if (cfr('TASKMAN')) {
                 simple_update_field('taskman', 'enddate', $_POST['editenddate'], "WHERE `id`='" . $editid . "'");
                 simple_update_field('taskman', 'employeedone', $_POST['editemployeedone'], "WHERE `id`='" . $editid . "'");
                 simple_update_field('taskman', 'donenote', $_POST['editdonenote'], "WHERE `id`='" . $editid . "'");
+                simple_update_field('taskman', 'change_admin', $_POST['change_admin'], "WHERE `id`='" . $editid . "'");
                 simple_update_field('taskman', 'status', '1', "WHERE `id`='" . $editid . "'");
 
                 //flushing darkvoid after changing task
@@ -163,21 +164,23 @@ if (cfr('TASKMAN')) {
              * Salary accounting actions
              */
             if ($altCfg['SALARY_ENABLED']) {
-                $salary = new Salary();
                 //salary job deletion
                 if (wf_CheckGet(array('deletejobid'))) {
+                    $salary = new Salary($_GET['edittask']);
                     $salary->deleteJob($_GET['deletejobid']);
                     rcms_redirect($salary::URL_TS . $_GET['edittask']);
                 }
 
                 //salary job editing
                 if (wf_CheckPost(array('editsalaryjobid', 'editsalaryemployeeid', 'editsalaryjobtypeid'))) {
+                    $salary = new Salary($_GET['edittask']);
                     $salary->jobEdit($_POST['editsalaryjobid'], $_POST['editsalaryemployeeid'], $_POST['editsalaryjobtypeid'], $_POST['editsalaryfactor'], $_POST['editsalaryoverprice'], $_POST['editsalarynotes']);
                     rcms_redirect($salary::URL_TS . $_GET['edittask']);
                 }
 
                 //salary job creation
                 if (wf_CheckPost(array('newsalarytaskid', 'newsalaryemployeeid', 'newsalaryjobtypeid'))) {
+                    $salary = new Salary($_GET['edittask']);
                     $salary->createSalaryJob($_POST['newsalarytaskid'], $_POST['newsalaryemployeeid'], $_POST['newsalaryjobtypeid'], $_POST['newsalaryfactor'], $_POST['newsalaryoverprice'], $_POST['newsalarynotes']);
                     rcms_redirect($salary::URL_TS . $_GET['edittask']);
                 }

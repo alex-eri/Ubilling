@@ -26,25 +26,22 @@ if (cfr('BRANCHES')) {
             show_window(__('Users'), $branch->renderUserList());
         }
 
-        //rendering branches users registration interface
-        if (wf_CheckGet(array('userreg'))) {
-            if (cfr('BRANCHESREG')) {
-                show_window(__('Users registration'), $branch->renderRegistrationForm());
+        //financial report 
+        if (wf_CheckGet(array('finreport'))) {
+            if (cfr('BRANCHESFINREP')) {
+                show_window(__('Finance report'), $branch->renderFinanceReport());
             } else {
                 show_error(__('Access denied'));
             }
         }
 
-
-
-        //financial report 
-        if (wf_CheckGet(array('finreport'))) {
-            show_window(__('Finance report'), $branch->renderFinanceReport());
-        }
-
         //signups report here
         if (wf_CheckGet(array('sigreport'))) {
-            show_window(__('Signup report'), $branch->renderSignupReport());
+            if (cfr('BRANCHESSIGREP')) {
+                show_window(__('Signup report'), $branch->renderSignupReport());
+            } else {
+                show_error(__('Access denied'));
+            }
         }
 
         if (wf_CheckGet(array('settings'))) {
@@ -108,7 +105,21 @@ if (cfr('BRANCHES')) {
                     rcms_redirect($branch::URL_ME . '&settings=true');
                 }
 
+                //service branch assigns
+                if (wf_CheckPost(array('newservicebranchid', 'newserviceid'))) {
+                    $branch->serviceAssignBranch($_POST['newservicebranchid'], $_POST['newserviceid']);
+                    rcms_redirect($branch::URL_ME . '&settings=true');
+                }
+
+                //service branch deassign
+                if (wf_CheckGet(array('deleteservice', 'servicebranchid'))) {
+                    $branch->serviceDeassignBranch($_GET['servicebranchid'], $_GET['deleteservice']);
+                    rcms_redirect($branch::URL_ME . '&settings=true');
+                }
+
                 show_window(__('Configuration'), $branch->renderSettingsBranches());
+            } else {
+                show_error(__('Access denied'));
             }
         }
     } else {

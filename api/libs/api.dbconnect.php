@@ -2,7 +2,7 @@
 
 error_reporting(E_ALL ^ E_DEPRECATED); //hide some deprecated warnings on 5.6 :(
 
-Class DbConnect {
+class DbConnect {
 
     var $host = '';
     var $user = '';
@@ -23,62 +23,106 @@ Class DbConnect {
         $this->error_reporting = $error_reporting;
     }
 
-    function open() {
-        if ($this->persistent) {
-            $func = 'mysql_pconnect';
+    public function open() {
+         if (extension_loaded('mysql')) {
+            if ($this->persistent) {
+                $func = 'mysql_pconnect';
+            } else {
+                $func = 'mysql_connect';
+            }
+
+            $this->conn = $func($this->host, $this->user, $this->password);
+            if (!$this->conn) {
+
+                return false;
+            }
+
+            if (@!mysql_select_db($this->database, $this->conn)) {
+                return false;
+            }
         } else {
-            $func = 'mysql_connect';
+            $this->conn = new mysqli($this->host, $this->user, $this->password, $this->database);
+            if ($this->conn->connect_error) {
+                return false;
+            }
         }
 
-        $this->conn = $func($this->host, $this->user, $this->password);
-        if (!$this->conn) {
-
-            return false;
-        }
-
-        if (@!mysql_select_db($this->database, $this->conn)) {
-            return false;
-        }
         return true;
     }
 
-    function close() {
-        return (@mysql_close($this->conn));
+    public function close() {
+            if (extension_loaded('mysql')) {
+                return (@mysql_close($this->conn));
+           } else {
+               return (@$this->conn->close());
+           }
     }
 
-    function error() {
+    public function error() {
         if ($this->error_reporting) {
-            return (mysql_error());
+            if (extension_loaded('mysql')) {
+                return (mysql_error());
+           } else {
+               return ($this->conn->error);
+           }
         }
     }
 
-    function query($sql) {
-        $this->result = @mysql_query($sql, $this->conn);
+    public function query($sql) {
+         if (extension_loaded('mysql')) {
+            $this->result = @mysql_query($sql, $this->conn);
+        } else {
+            $this->result = @$this->conn->query($sql);
+        }
         return($this->result != false);
     }
 
-    function affectedrows() {
-        return(@mysql_affected_rows($this->conn));
+    public function affectedrows() {
+         if (extension_loaded('mysql')) {
+            return(@mysql_affected_rows($this->conn));
+        } else {
+            return(@$this->conn->affected_rows);
+        }
     }
 
-    function numrows() {
-        return(@mysql_num_rows($this->result));
+    public function numrows() {
+         if (extension_loaded('mysql')) {
+            return(@mysql_num_rows($this->result));
+        } else {
+            return(@$this->conn->num_rows);
+        }
     }
 
-    function fetchobject() {
-        return(@mysql_fetch_object($this->result, MYSQL_ASSOC));
+    public function fetchobject() {
+         if (extension_loaded('mysql')) {
+            return(@mysql_fetch_object($this->result));
+        } else {
+            return($result = @$this->result->fetch_object());
+        }
     }
 
-    function fetcharray() {
-        return(mysql_fetch_array($this->result));
+    public function fetcharray() {
+         if (extension_loaded('mysql')) {
+            return(mysql_fetch_array($this->result));
+        } else {
+            return($result = @$this->result->fetch_array(MYSQLI_BOTH));
+        }
     }
 
-    function fetchassoc() {
-        return(@mysql_fetch_assoc($this->result));
+    public function fetchassoc() {
+         if (extension_loaded('mysql')) {
+            return(@mysql_fetch_assoc($this->result));
+        } else {
+            return($result = @$this->result->fetch_assoc());
+        }
     }
 
-    function freeresult() {
-        return(@mysql_free_result($this->result));
+    public function freeresult() {
+         if (extension_loaded('mysql')) {
+            return(@mysql_free_result($this->result));
+        } else {
+            return(@$this->result->free());
+        }
     }
 
 }

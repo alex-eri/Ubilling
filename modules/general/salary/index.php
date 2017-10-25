@@ -8,14 +8,16 @@ if (cfr('SALARY')) {
         if (!empty($beggar)) {
             $salary = new Salary();
 
-            if (method_exists($salary, $beggar['M']['PANEL'])) {
-                show_window('', $salary->$beggar['M']['PANEL']());
+            if (isset($beggar['M']['PANEL']) and method_exists($salary, $beggar['M']['PANEL'])) {
+                $beggar_m = $beggar['M']['PANEL'];
+                show_window('', $salary->$beggar_m());
             }
 
 // jobtype pricing creation
             if (wf_CheckPost(array('newjobtypepriceid', 'newjobtypepriceunit'))) {
-                if (method_exists($salary, $beggar['M']['JPADD'])) {
-                    $salary->$beggar['M']['JPADD']($_POST['newjobtypepriceid'], $_POST['newjobtypeprice'], $_POST['newjobtypepriceunit'], $_POST['newjobtypepricetime']);
+                if (isset($beggar['M']['JPADD']) and method_exists($salary, $beggar['M']['JPADD'])) {
+                    $beggar_m = $beggar['M']['JPADD'];
+                    $salary->$beggar_m($_POST['newjobtypepriceid'], $_POST['newjobtypeprice'], $_POST['newjobtypepriceunit'], $_POST['newjobtypepricetime']);
                 }
                 if (isset($beggar['U']['JPL'])) {
                     rcms_redirect($beggar['U']['JPL']);
@@ -24,17 +26,19 @@ if (cfr('SALARY')) {
 
 //jobtype price deletion
             if (wf_CheckGet(array('deletejobprice'))) {
-                if (method_exists($salary, $beggar['M']['JPFLUSH'])) {
-                    $salary->$beggar['M']['JPFLUSH']($_GET['deletejobprice']);
+                if (isset($beggar['M']['JPFLUSH']) and method_exists($salary, $beggar['M']['JPFLUSH'])) {
+                    $beggar_m = $beggar['M']['JPFLUSH'];
+                    $salary->$beggar_m($_GET['deletejobprice']);
                 }
                 if (isset($beggar['U']['JPL'])) {
                     rcms_redirect($beggar['U']['JPL']);
                 }
             }
 //saving jobprices into database
-            if (wf_CheckPost(array($beggar['U']['JPCPE']))) {
-                if (method_exists($salary, $beggar['M']['JPSAVE'])) {
-                    $salary->$beggar['M']['JPSAVE']($_POST[$beggar['U']['JPCPE']]);
+            if (isset($beggar['U']['JPCPE']) and wf_CheckPost(array($beggar['U']['JPCPE']))) {
+                if (isset($beggar['M']['JPSAVE']) and method_exists($salary, $beggar['M']['JPSAVE'])) {
+                    $beggar_m = $beggar['M']['JPSAVE'];
+                    $salary->$beggar_m($_POST[$beggar['U']['JPCPE']]);
                 }
                 if (isset($beggar['U']['JPL'])) {
                     rcms_redirect($beggar['U']['JPL']);
@@ -42,9 +46,10 @@ if (cfr('SALARY')) {
             }
 
 //listing avalable job pricings            
-            if (wf_CheckGet(array($beggar['U']['JPCG']))) {
-                if (method_exists($salary, $beggar['VP']['JPAF'])) {
-                    $jpCf = $salary->$beggar['VP']['JPAF']();
+            if (isset($beggar['U']['JPCG']) and wf_CheckGet(array($beggar['U']['JPCG']))) {
+                if (isset($beggar['VP']['JPAF']) and method_exists($salary, $beggar['VP']['JPAF'])) {
+                    $beggar_vp = $beggar['VP']['JPAF'];
+                    $jpCf = $salary->$beggar_vp();
                 } else {
                     $jpCf = '';
                 }
@@ -53,7 +58,8 @@ if (cfr('SALARY')) {
                 } else {
                     show_warning(__('No available job types for pricing'));
                 }
-                show_window(__('Available job types pricing'), $salary->$beggar['M']['JPLIST']());
+                $beggar_m = $beggar['M']['JPLIST'];
+                show_window(__('Available job types pricing'), $salary->$beggar_m());
                 show_window('', wf_BackLink($salary::URL_ME));
             }
 
@@ -83,8 +89,9 @@ if (cfr('SALARY')) {
             }
 
 //listing available employee wages
-            if (wf_CheckGet(array($beggar['U']['EWCG']))) {
-                $ewCf = $salary->$beggar['VP']['EWAF']();
+            if (isset($beggar['U']['EWCG']) and wf_CheckGet(array($beggar['U']['EWCG']))) {
+                $beggar_m = $beggar['VP']['EWAF'];
+                $ewCf = $salary->$beggar_m();
                 if ($ewCf) {
                     show_window(__('Employee wages'), $ewCf);
                 } else {

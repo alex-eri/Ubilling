@@ -34,6 +34,22 @@ class UbillingCache {
     protected $memcachedPort = '';
 
     /**
+     * Redis server IP/Hostname
+     * via REDIS_SERVER option
+     * 
+     * @var string
+     */
+    protected $redisServer = '';
+
+    /**
+     * Redis server port
+     * via REDIS_PORT option
+     *
+     * @var int
+     */
+    protected $redisPort = '';
+
+    /**
      * File storage path: "exports/" by default
      *
      * @var string
@@ -49,10 +65,15 @@ class UbillingCache {
 
     const CACHE_PREFIX = 'UBCACHE_';
 
+    /**
+     * Creates new UbillingCache instance
+     * 
+     * @return void
+     */
     public function __construct() {
         $this->loadAlter();
         $this->setOptions();
-        $this->initMemcached();
+        $this->initStorageServerCache();
     }
 
     /**
@@ -92,20 +113,40 @@ class UbillingCache {
             }
         }
 
+        if ($this->storage == 'redis') {
+            if (isset($this->altCfg['REDIS_SERVER'])) {
+                $this->redisServer = $this->altCfg['REDIS_SERVER'];
+            } else {
+                $this->redisServer = 'localhost';
+            }
+            if (isset($this->altCfg['REDIS_PORT'])) {
+                $this->redisPort = $this->altCfg['REDIS_PORT'];
+            } else {
+                $this->redisPort = 6379;
+            }
+        }
+
         if ($this->storage == 'files') {
             $this->storagePath = 'exports/';
         }
     }
 
     /**
-     * Inits memcached server if it needed
+     * Inits storage server cache if it needed
      * 
      * @return void
      */
-    protected function initMemcached() {
+    protected function initStorageServerCache() {
+        // Init Memcached
         if ($this->storage == 'memcached') {
             $this->memcached = new Memcached();
             $this->memcached->addServer($this->memcachedServer, $this->memcachedPort);
+        }
+        // Init Redis
+        if ($this->storage == 'redis') {
+            $this->redis = new Redis();
+            $this->redis->connect($this->redisServer, $this->redisPort);
+            $this->redis->setOption(Redis::OPT_SERIALIZER, Redis::SERIALIZER_PHP);
         }
     }
 
@@ -117,58 +158,56 @@ class UbillingCache {
      * @return string
      */
     protected function genKey($key) {
-        $result = self::CACHE_PREFIX . md5($key);
+        $result = self::CACHE_PREFIX . vf($key);
         return ($result);
     }
-
-    /* If you think it's too loud
-      Bitch get the fuck out
-      If you wanna slow down
-      Bitch get the fuck out
-      If your ass ain't with me
-      Bitch get the fuck out
-      What get the fuck out
-      Bitch get the fuck out */
 
     /**
      * Puts data into cache storage
      * 
      * @param string $key
-     * @param mixed $data
+     * @param string $data
      * @param int $expiration
      * 
      * @return void
      */
-    protected function set($key, $data, $expiration = 0) {
+    public function set($key, $data, $expiration = 2592000) {
         $key = $this->genKey($key);
+        // Set expiration time not more 1 month
+        $expiration = ($expiration > 2592000) ? '2592000' : $expiration;
+
+        //files storage
         if ($this->storage == 'files') {
-            file_put_contents($this->storagePath . $key, $data);
+            file_put_contents($this->storagePath . $key, serialize($data));
         }
 
+        //memcached storage
         if ($this->storage == 'memcached') {
             $this->memcached->set($key, $data, $expiration);
+        }
+
+        //redis storage
+        if ($this->storage == 'redis') {
+            $this->redis->set($key, $data);
+            $this->redis->setTimeout($key, $expiration);
         }
     }
 
     /**
-     * Returns data from cache by key or runs callback and fills new cache data
+     * Returns data by key name. Empty if no data exists or cache expired.
      * 
-     * @param string $key  Storage key
-     * @param Closure $callback Callback function 
-     * @param int $expiration Expiration time in seconds
+     * @param string $key Storage key name
+     * @param int   $expiration Expiration time in seconds
      * 
      * @return string
      */
-    public function getCallback($key, Closure $callback, $expiration = 0) {
+    public function get($key, $expiration = 2592000) {
+        $result = '';
         $keyRaw = $key;
         $key = $this->genKey($key);
-
         //files storage
         if ($this->storage == 'files') {
             $cacheName = $this->storagePath . $key;
-            if (!$expiration) {
-                $expiration = 2629743; // month by default
-            }
             $cacheTime = time() - $expiration;
             $updateCache = false;
             if (file_exists($cacheName)) {
@@ -184,11 +223,12 @@ class UbillingCache {
 
             if (!$updateCache) {
                 //read data directly from cache
-                $result = file_get_contents($cacheName);
+                $data = file_get_contents($cacheName);
+                $result = unserialize($data);
             } else {
-                //run callback function and store new data into cache
-                $result = $callback();
-                $this->set($keyRaw, $result, $expiration);
+                //cache expired, return empty result
+                $result = '';
+                $this->delete($keyRaw);
             }
             return ($result);
         }
@@ -197,16 +237,48 @@ class UbillingCache {
         if ($this->storage == 'memcached') {
             $result = $this->memcached->get($key);
             if (!$result) {
-                $result = $callback();
-                $this->set($keyRaw, $result, $expiration);
+                $result = '';
             }
             return ($result);
         }
-        //fake storage
-        if ($this->storage == 'fake') {
-            $result = $callback();
+
+        //redis storage
+        if ($this->storage == 'redis') {
+            $result = $this->redis->get($key);
+            if (!$result) {
+                $result = '';
+            }
             return ($result);
         }
+
+        //fake storage
+        if ($this->storage == 'fake') {
+            $result = '';
+            return ($result);
+        }
+
+        return ($result);
+    }
+
+    /**
+     * Returns data from cache by key or runs callback and fills new cache data
+     * 
+     * @param string $key  Storage key
+     * @param Closure $callback Callback function 
+     * @param int $expiration Expiration time in seconds
+     * 
+     * @return string
+     */
+    public function getCallback($key, Closure $callback, $expiration = 2592000) {
+        // Use this class get function
+        $result = $this->get($key, $expiration);
+        if (!$result) {
+            // If not have result from class get function
+            // return $callback data function and set new cache
+            $result = $callback();
+            $this->set($key, $result, $expiration);
+        }
+        return ($result);
     }
 
     /**
@@ -218,14 +290,103 @@ class UbillingCache {
      */
     public function delete($key) {
         $key = $this->genKey($key);
+
+        //files storage
         if ($this->storage == 'files') {
             if (file_exists($this->storagePath . $key)) {
                 unlink($this->storagePath . $key);
             }
         }
 
+        //memcached storage
         if ($this->storage == 'memcached') {
             $this->memcached->delete($key);
+        }
+
+        //redis storage
+        if ($this->storage == 'redis') {
+            $this->redis->delete($key);
+        }
+    }
+
+    /**
+     * Show all data from cache
+     * 
+     * @return void
+     */
+    public function getAllcache($show_data = '') {
+        $result = array();
+        //files storage
+        if ($this->storage == 'files') {
+            $cache = scandir($this->storagePath);
+            $keys = array_diff($cache, array('..', '.', '.gitignore', '.htaccess'));
+            $keys = preg_grep("/^" . self::CACHE_PREFIX . "/", $keys);
+            if ($show_data) {
+                $result = array();
+                foreach ($keys as $key => $file) {
+                    $result[$key]['key'] = $file;
+                    $result[$key]['value'] = unserialize(file_get_contents($this->storagePath . $file));
+                }
+            } else {
+                $result = $keys;
+            }
+            return($result);
+        }
+
+        //memcached storage
+        if ($this->storage == 'memcached') {
+            $keys = $this->memcached->getAllKeys();
+            $keys = preg_grep("/^" . self::CACHE_PREFIX . "/", $keys);
+            if ($show_data) {
+                $this->memcached->getDelayed($keys);
+                $result = $this->memcached->fetchAll();
+            } else {
+                $result = $keys;
+            }
+            return($result);
+        }
+
+        //redis storage
+        if ($this->storage == 'redis') {
+            $keys = $this->redis->keys(self::CACHE_PREFIX . '*');
+            if ($show_data) {
+                $value = $this->redis->mGet($keys);
+                foreach ($keys as $id => $key) {
+                    $result[$id]['key'] = $key;
+                    $result[$id]['value'] = $value[$id];
+                }
+            } else {
+                $result = $keys;
+            }
+            return($result);
+        }
+    }
+
+    /**
+     * Delete all data from cache
+     * 
+     * @return void
+     */
+    public function deleteAllcache() {
+        $cache_data = $this->getAllcache();
+
+        //files storage
+        if ($this->storage == 'files' and ! empty($cache_data)) {
+            foreach ($cache_data as $cache) {
+                unlink($this->storagePath . $cache);
+            }
+        }
+
+        //memcached storage
+        if ($this->storage == 'memcached' and ! empty($cache_data)) {
+            $result = $this->memcached->deleteMulti($cache_data);
+            return($result);
+        }
+
+        //redis storage
+        if ($this->storage == 'redis' and ! empty($cache_data)) {
+            $result = $this->redis->delete($cache_data);
+            return($result);
         }
     }
 

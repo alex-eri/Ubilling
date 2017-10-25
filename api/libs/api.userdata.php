@@ -14,6 +14,7 @@ function zb_UserCreateRealName($login, $realname) {
     $query = "INSERT INTO `realname`  (`id`,`login`,`realname`) VALUES   (NULL, '" . $login . "','" . $realname . "'); ";
     nr_query($query);
     log_register('CREATE UserRealName (' . $login . ')  `' . $realname . '`');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -26,6 +27,7 @@ function zb_UserDeleteRealName($login) {
     $query = "DELETE from `realname` WHERE `login` = '" . $login . "';";
     nr_query($query);
     log_register('DELETE UserRealName (' . $login . ')');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -57,6 +59,7 @@ function zb_UserChangeRealName($login, $realname) {
     $query = "UPDATE `realname` SET `realname` = '" . $realname . "' WHERE `login`= '" . $login . "' ;";
     nr_query($query);
     log_register('CHANGE UserRealName (' . $login . ')   `' . $realname . '`');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -111,6 +114,82 @@ function zb_UserGetAllIpMACs() {
 }
 
 /**
+ * Flushes USER_ALL_DATA cache
+ * 
+ * @return void
+ */
+function zb_UserGetAllDataCacheClean() {
+    $cache = new UbillingCache();
+    $cache->delete('USER_ALL_DATA');
+}
+
+/**
+ * Returns cache for functionzb_UserGetAllData
+ * Use this function only when not set $login
+ * 
+ * @param string $login existing user login
+ * @return array
+ */
+function zb_UserGetAllDataCache() {
+    $result = '';
+    $cache = new UbillingCache();
+    $cacheTime = 86400;
+    $result = $cache->getCallback('USER_ALL_DATA', function () {
+        return (zb_UserGetAllData());
+    }, $cacheTime);
+
+    return ($result);
+}
+
+/**
+ * Returns all information about User by login
+ * 
+ * @param string $login existing user login
+ * @return array['login']=>array(login,realname,Passive,AlwaysOnline,Tariff,Credit,Cash,ip,mac,cityname,streetname,buildnum,entrance,floor,apt,geo,fulladress,phone,mobile,contract)
+ * Crazy Pautina
+ */
+function zb_UserGetAllData($login = '') {
+    global $ubillingConfig;
+    $altCfg = $ubillingConfig->getAlter();
+    $result = array();
+    $query_wh = (!empty($login)) ? "WHERE `users`.`login` = '" . vf($login) . "'" : "";
+    $query = "
+            SELECT `users`.`login`, `realname`.`realname`, `Passive`, `AlwaysOnline`, `Tariff`, `Credit`, `Cash`,
+                    `ip`, `mac`, `cityname`, `streetname`, `buildnum`, `entrance`, `floor`, `apt`, `geo`,";
+    if ($altCfg['ZERO_TOLERANCE'] and $altCfg['CITY_DISPLAY']) {
+        $query .="concat(`cityname`, ' ', `streetname`, ' ', `buildnum`, IF(`apt`, concat('/',`apt`), '')) AS `fulladress`,";
+    } elseif ($altCfg['ZERO_TOLERANCE'] and ! $altCfg['CITY_DISPLAY']) {
+        $query .="concat(`streetname`, ' ', `buildnum`, IF(`apt`, concat('/',`apt`), '')) AS `fulladress`,";
+    } elseif (!$altCfg['ZERO_TOLERANCE'] and $altCfg['CITY_DISPLAY']) {
+        $query .="concat(`cityname`, ' ', `streetname`, ' ', `buildnum`, '/', `apt`) AS `fulladress`,";
+    } else {
+        $query .="concat(`streetname`, ' ', `buildnum`, '/', `apt`) AS `fulladress`,";
+    }
+    $query .="
+                    `phones`.`phone`,`mobile`,`contract`,`emails`.`email`
+                    FROM `users` LEFT JOIN `nethosts` USING (`ip`)
+                    LEFT JOIN `realname` ON (`users`.`login`=`realname`.`login`)
+                    LEFT JOIN `address` ON (`users`.`login`=`address`.`login`)
+                    LEFT JOIN `apt` ON (`address`.`aptid`=`apt`.`id`)
+                    LEFT JOIN `build` ON (`apt`.`buildid`=`build`.`id`)
+                    LEFT JOIN `street` ON (`build`.`streetid`=`street`.`id`)
+                    LEFT JOIN `city` ON (`street`.`cityid`=`city`.`id`)
+                    LEFT JOIN `phones` ON (`users`.`login`=`phones`.`login`)
+                    LEFT JOIN `contracts` ON (`users`.`login`=`contracts`.`login`)
+                    LEFT JOIN `emails` ON (`users`.`login`=`emails`.`login`)
+                    " . $query_wh;
+    $Alldata = (!empty($login)) ? simple_query($query) : simple_queryall($query);
+    if (empty($login) and ! empty($Alldata)) {
+        foreach ($Alldata as $data) {
+            $result[$data['login']] = $data;
+        }
+    } else {
+        $result[$login] = $Alldata;
+    }
+    return($result);
+}
+
+/**
  * Returns all of used by users MAC bindings from database as array login=>mac
  * 
  * @return array
@@ -149,6 +228,7 @@ function zb_UserCreatePhone($login, $phone, $mobile) {
     $query = "INSERT INTO `phones`  (`id`,`login`,`phone`,`mobile`)  VALUES  (NULL, '" . $login . "','" . $phone . "','" . $mobile . "');";
     nr_query($query);
     log_register('CREATE UserPhone (' . $login . ') `' . $phone . '` `' . $mobile . '`');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -161,6 +241,7 @@ function zb_UserDeletePhone($login) {
     $query = "DELETE from `phones` WHERE `login` = '" . $login . "';";
     nr_query($query);
     log_register('DELETE UserPhone (' . $login . ')');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -199,6 +280,7 @@ function zb_UserChangePhone($login, $phone) {
     $query = "UPDATE `phones` SET `phone` = '" . $phone . "' WHERE `login`= '" . $login . "' ;";
     nr_query($query);
     log_register('CHANGE UserPhone (' . $login . ') `' . $phone . '`');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -213,6 +295,7 @@ function zb_UserChangeMobile($login, $mobile) {
     $query = "UPDATE `phones` SET `mobile` = '" . $mobile . "' WHERE `login`= '" . $login . "' ;";
     nr_query($query);
     log_register('CHANGE UserMobile (' . $login . ') `' . $mobile . '`');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -245,6 +328,7 @@ function zb_UserCreateEmail($login, $email) {
     $query = "INSERT INTO `emails`  (`id`,`login`,`email`) VALUES  (NULL, '" . $login . "','" . $email . "');";
     nr_query($query);
     log_register('CREATE UserEmail (' . $login . ') `' . $email . '`');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -257,6 +341,7 @@ function zb_UserDeleteEmail($login) {
     $query = "DELETE from `emails` WHERE `login` = '" . $login . "';";
     nr_query($query);
     log_register('DELETE UserEmail (' . $login . ')');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -284,6 +369,7 @@ function zb_UserChangeEmail($login, $email) {
     $query = "UPDATE `emails` SET `email` = '" . $email . "' WHERE `login`= '" . $login . "' ;";
     nr_query($query);
     log_register('CHANGE UserEmail (' . $login . ') ' . $email);
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -298,6 +384,7 @@ function zb_UserCreateContract($login, $contract) {
     $query = "INSERT INTO `contracts` (`id`,`login`,`contract`)  VALUES  (NULL, '" . $login . "','" . $contract . "');";
     nr_query($query);
     log_register('CREATE UserContract (' . $login . ') `' . $contract . '`');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -310,6 +397,7 @@ function zb_UserDeleteContract($login) {
     $query = "DELETE from `contracts` WHERE `login` = '" . $login . "';";
     nr_query($query);
     log_register('DELETE UserContract (' . $login . ')');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -337,6 +425,7 @@ function zb_UserChangeContract($login, $contract) {
     $query = "UPDATE `contracts` SET `contract` = '" . $contract . "' WHERE `login`= '" . $login . "' ;";
     nr_query($query);
     log_register('CHANGE UserContract (' . $login . ') `' . $contract . '`');
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -677,6 +766,68 @@ function zb_UserGetAllNotes() {
         }
     }
     return ($result);
+}
+
+/**
+ * Temporary resurrects user if he is inactive by some reasons
+ * 
+ * @param string $login
+ * 
+ * @return void
+ */
+function zb_UserResurrect($login) {
+    global $billing;
+    $userData = zb_UserGetStargazerData($login);
+    $resurrectFlag = false;
+    $resurrectType = array();
+    if (!empty($userData)) {
+        //user manually disabled?
+        if ($userData['Down'] == 1) {
+            $resurrectFlag = true;
+            $resurrectType['DOWN'] = 'DOWN';
+            $billing->setdown($login, 0);
+        }
+
+        //user frozen at this moment
+        if ($userData['Passive'] == 1) {
+            $resurrectFlag = true;
+            $resurrectType['PASSIVE'] = 'PASSIVE';
+            $billing->setpassive($login, 0);
+        }
+
+        //user AlwaysOnline flag disabled
+        if ($userData['AlwaysOnline'] == 0) {
+            $resurrectFlag = true;
+            $resurrectType['AO'] = 'AO';
+            $billing->setao($login, 1);
+        }
+
+        if ($userData['Cash'] < '-' . $userData['Credit']) {
+            $resurrectFlag = true;
+            $resurrectType['CASH'] = 'CASH';
+            $currentCreditValue = $userData['Credit'];
+            $tmpCreditValue = abs($userData['Cash']);
+            $billing->setcredit($login, $tmpCreditValue);
+        }
+
+        //back user data to original state
+        if ($resurrectFlag) {
+            if (isset($resurrectType['DOWN'])) {
+                $billing->setdown($login, 1);
+            }
+            if (isset($resurrectType['PASSIVE'])) {
+                $billing->setpassive($login, 1);
+            }
+            if (isset($resurrectType['AO'])) {
+                $billing->setao($login, 0);
+            }
+            if (isset($resurrectType['CASH'])) {
+                $billing->setcredit($login, $currentCreditValue);
+            }
+
+            log_register('RESURRECT (' . $login . ') ' . implode(',', $resurrectType));
+        }
+    }
 }
 
 ?>

@@ -38,6 +38,13 @@ class UserProfile {
     protected $aptdata = array();
 
     /**
+     * Array of all available non cached login=>data
+     *
+     * @var array
+     */
+    protected $AllUserData = '';
+
+    /**
      * Important profile fields highlighting start
      *
      * @var string
@@ -122,6 +129,13 @@ class UserProfile {
     protected $mac = '';
 
     /**
+     * Build geo location
+     *
+     * @var string
+     */
+    protected $buildgeo = '';
+
+    /**
      * Payment ID of current user
      *
      * @var string
@@ -151,14 +165,10 @@ class UserProfile {
             if (empty($this->userdata)) {
                 throw new Exception(self::EX_EMPTY_USERDATA . ' ' . print_r($this, true));
             }
-            $this->loadAlladdress();
-            $this->loadRealname();
-            $this->loadPhonedata();
-            $this->loadContract();
-            $this->loadEmail();
             $this->loadAptdata();
+            $this->loadUserAlldata();
+            $this->extractUserAllData();
             $this->loadSpeedoverride();
-            $this->loadNethostsMac();
             $this->loadPaymentID();
             $this->loadPlugins();
         } else {
@@ -202,56 +212,31 @@ class UserProfile {
     }
 
     /**
-     * loads all available users address from database (yep, with forced cities)
+     * loads All user data from database in pricate data property
      * 
      * @return void
      */
-    protected function loadAlladdress() {
-        $this->alladdress = zb_AddressGetFullCityaddresslist();
-        @$this->useraddress = $this->alladdress[$this->login];
-    }
-
-    /**
-     * loads user realname from database and sets it to private prop
-     * 
-     * @return void
-     */
-    protected function loadRealname() {
-        $this->realname = zb_UserGetRealName($this->login);
-    }
-
-    /**
-     * gets phonedata from database and sets it to private data properties
-     * 
-     * @return void
-     */
-    protected function loadPhonedata() {
+    protected function loadUserAlldata() {
         if (!empty($this->login)) {
-            $query = "SELECT * from `phones` WHERE `login`='" . $this->login . "'";
-            $this->phonedata = simple_query($query);
-            if (!empty($this->phonedata)) {
-                $this->phone = $this->phonedata['phone'];
-                $this->mobile = $this->phonedata['mobile'];
-            }
+            $this->AllUserData = zb_UserGetAllData($this->login);
         }
     }
 
     /**
-     * loads user contract from database
+     * returns private all userdata property to external scope
      * 
-     * @return void
+     * @return array
      */
-    protected function loadContract() {
-        $this->contract = zb_UserGetContract($this->login);
-    }
-
-    /**
-     * loads user email from database
-     * 
-     * @return void
-     */
-    protected function loadEmail() {
-        $this->mail = zb_UserGetEmail($this->login);
+    protected function extractUserAllData() {
+        $this->useraddress = $this->AllUserData[$this->login]['fulladress'];
+        $this->realname = $this->AllUserData[$this->login]['realname'];
+        $this->phone = $this->AllUserData[$this->login]['phone'];
+        $this->mobile = $this->AllUserData[$this->login]['mobile'];
+        $this->contract = $this->AllUserData[$this->login]['contract'];
+        $this->mail = $this->AllUserData[$this->login]['email'];
+        //$this->apt = $this->AllUserData[$this->login]['apt'];
+        $this->mac = $this->AllUserData[$this->login]['mac'];
+        $this->buildgeo = $this->AllUserData[$this->login]['geo'];
     }
 
     /**
@@ -270,15 +255,6 @@ class UserProfile {
      */
     protected function loadSpeedoverride() {
         $this->speedoverride = zb_UserGetSpeedOverride($this->login);
-    }
-
-    /**
-     * loads user nethosts mac address by IP
-     * 
-     * @return void
-     */
-    protected function loadNethostsMac() {
-        $this->mac = zb_MultinetGetMAC($this->userdata['IP']);
     }
 
     /**
@@ -448,7 +424,7 @@ class UserProfile {
         if ($this->alterCfg['OPENPAYZ_REALID']) {
             $this->paymentid = zb_PaymentIDGet($this->login);
         } else {
-            $this->paymentid = ip2int($this->userdata['IP']);
+            $this->paymentid = ip2long($this->userdata['IP']);
         }
     }
 
@@ -600,8 +576,7 @@ class UserProfile {
     protected function getTaskCreateControl() {
 //profile task creation icon
         if ($this->alterCfg['CREATETASK_IN_PROFILE']) {
-            $fulladdresslist = zb_AddressGetFulladdresslistCached();
-            @$shortAddress = $fulladdresslist[$this->login];
+            @$shortAddress = $this->useraddress;
             $createForm = ts_TaskCreateFormProfile($shortAddress, $this->mobile, $this->phone, $this->login);
             $result = wf_modal(wf_img('skins/createtask.gif', __('Create task')), __('Create task'), $createForm, '', '450', '540');
         } else {
@@ -620,11 +595,12 @@ class UserProfile {
         if ($this->alterCfg['SWYMAP_ENABLED']) {
 //getting build locator
             if (isset($this->aptdata['buildid'])) {
-                $thisUserBuildData = zb_AddressGetBuildData($this->aptdata['buildid']);
-                $thisUserBuildGeo = $thisUserBuildData['geo'];
+                $thisUserBuildGeo = $this->buildgeo;
                 if (!empty($thisUserBuildGeo)) {
                     $locatorIcon = wf_img_sized('skins/icon_search_small.gif', __('Find on map'), 10);
                     $buildLocator = ' ' . wf_Link("?module=usersmap&findbuild=" . $thisUserBuildGeo, $locatorIcon, false);
+                } else {
+                    $buildLocator.= ' ' . wf_Link('?module=usersmap&locfinder=true&placebld=' . $this->aptdata['buildid'], wf_img_sized('skins/ymaps/target.png', __('Place on map'), '10'), false, '');
                 }
 //and neighbors state cache
                 if (!empty($this->aptdata['buildid'])) {
@@ -723,6 +699,70 @@ class UserProfile {
                 }
                 $result = $this->addRow(__('Connection details'), $data);
             }
+        }
+        return ($result);
+    }
+
+    /**
+     * Renders users available deal with it tasks notification
+     * 
+     * @return string
+     */
+    protected function getUserDealWithItNotification() {
+        $result = '';
+        if ($this->alterCfg['DEALWITHIT_IN_PROFILE']) {
+            $notification = '';
+            $query = "SELECT `login`,`action` from `dealwithit` WHERE `login`='" . $this->login . "';";
+            $all = simple_queryall($query);
+            if (!empty($all)) {
+                $actionNames = array(
+                    'addcash' => __('Add cash'),
+                    'corrcash' => __('Correct saldo'),
+                    'setcash' => __('Set cash'),
+                    'credit' => __('Change') . ' ' . __('credit'),
+                    'creditexpire' => __('Change') . ' ' . __('credit expire date'),
+                    'tariffchange' => __('Change') . ' ' . __('tariff'),
+                    'tagadd' => __('Add tag'),
+                    'tagdel' => __('Delete tag'),
+                    'freeze' => __('Freeze user'),
+                    'unfreeze' => __('Unfreeze user'),
+                    'reset' => __('User reset'),
+                    'setspeed' => __('Change speed override'),
+                    'down' => __('Set user down'),
+                    'undown' => __('Enable user'),
+                    'ao' => __('Enable AlwaysOnline'),
+                    'unao' => __('Disable AlwaysOnline')
+                );
+
+                $actionIcons = array(
+                    'addcash' => 'skins/icon_dollar.gif',
+                    'corrcash' => 'skins/icon_dollar.gif',
+                    'setcash' => 'skins/icon_dollar.gif',
+                    'credit' => 'skins/icon_credit.gif',
+                    'creditexpire' => 'skins/icon_calendar.gif',
+                    'tariffchange' => 'skins/icon_tariff.gif',
+                    'tagadd' => 'skins/tagiconsmall.png',
+                    'tagdel' => 'skins/tagiconsmall.png',
+                    'freeze' => 'skins/icon_passive.gif',
+                    'unfreeze' => 'skins/icon_passive.gif',
+                    'reset' => 'skins/refresh.gif',
+                    'setspeed' => 'skins/icon_speed.gif',
+                    'down' => 'skins/icon_down.gif',
+                    'undown' => 'skins/icon_down.gif',
+                    'ao' => 'skins/icon_online.gif',
+                    'unao' => 'skins/icon_online.gif'
+                );
+
+                foreach ($all as $io => $each) {
+                    if ((isset($actionNames[$each['action']])) AND ( isset($actionIcons[$each['action']]))) {
+                        $icon = wf_img_sized($actionIcons[$each['action']], $actionNames[$each['action']], '10', '10');
+                        $notification.=wf_Link('?module=pl_dealwithit&username=' . $this->login, $icon, false) . ' ';
+                    } else {
+                        $notification.=$each['action'] . ' ';
+                    }
+                }
+            }
+            $result = $this->addRow(__('Held jobs for this user'), $notification);
         }
         return ($result);
     }
@@ -900,6 +940,56 @@ class UserProfile {
     }
 
     /**
+     * Returns mobile controls if required
+     * 
+     * @return string
+     */
+    protected function getMobileControls() {
+        $result = '';
+        if (isset($this->alterCfg['EASY_SMS'])) {
+            if ($this->alterCfg['EASY_SMS']) {
+                if ($this->alterCfg['SENDDOG_ENABLED']) {
+                    //perform sending
+                    if (wf_CheckPost(array('neweasysmsnumber', 'neweasysmstext'))) {
+                        $sms = new UbillingSMS();
+                        $targetNumber = $_POST['neweasysmsnumber'];
+                        $targetText = $_POST['neweasysmstext'];
+                        $translitFlag = (wf_CheckPost(array('neweasysmstranslit'))) ? true : false;
+                        $sms->sendSMS($targetNumber, $targetText, $translitFlag, 'EASYSMS');
+                        rcms_redirect('?module=userprofile&username=' . $this->login);
+                    }
+
+                    if (!empty($this->mobile)) {
+                        //cleaning mobile number
+                        $userMobile = trim($this->mobile);
+                        $userMobile = str_replace(' ', '', $userMobile);
+                        $userMobile = str_replace('-', '', $userMobile);
+                        $userMobile = str_replace('(', '', $userMobile);
+                        $userMobile = str_replace(')', '', $userMobile);
+                        if (isset($this->alterCfg['REMINDER_PREFIX'])) {
+                            $prefix = $this->alterCfg['REMINDER_PREFIX']; //trying to support defferent formats
+                            if (!empty($prefix)) {
+                                $userMobile = str_replace($prefix, '', $userMobile);
+                                $userMobile = $prefix . $userMobile;
+                            }
+
+                            $sendInputs = wf_TextInput('neweasysmsnumber', __('Mobile'), $userMobile, true, '15', 'mobile');
+                            $sendInputs.= wf_TextArea('neweasysmstext', '', '', true, '40x5');
+                            $sendInputs.= wf_CheckInput('neweasysmstranslit', __('Forced transliteration'), true, true);
+                            $sendInputs.= wf_tag('br');
+                            $sendInputs.= wf_Submit(__('Send SMS'));
+                            $sendingForm = wf_Form('', 'POST', $sendInputs, 'glamour');
+
+                            $result = ' ' . wf_modalAuto(wf_img_sized('skins/icon_sms_micro.gif', __('Send SMS'), '10', '10'), __('Send SMS'), $sendingForm, '');
+                        }
+                    }
+                }
+            }
+        }
+        return ($result);
+    }
+
+    /**
      * Checks agent assing and return controls if needed
      * 
      * @return string
@@ -1059,6 +1149,31 @@ class UserProfile {
     }
 
     /**
+     * Returns WiFi CPE user controls
+     * 
+     * @return string
+     */
+    protected function getUserCpeControls() {
+        $result = '';
+        if ($this->alterCfg['WIFICPE_ENABLED']) {
+            $wcpeFlag = true;
+            if (isset($this->alterCfg['WIFICPE_TARIFFMASK'])) {
+                if (!empty($this->alterCfg['WIFICPE_TARIFFMASK'])) {
+                    if (!ispos($this->userdata['Tariff'], $this->alterCfg['WIFICPE_TARIFFMASK'])) {
+                        $wcpeFlag = false;
+                    }
+                }
+            }
+
+            if ($wcpeFlag) {
+                $wcpe = new WifiCPE();
+                $result.=$wcpe->renderCpeUserControls($this->login, $this->AllUserData);
+            }
+        }
+        return ($result);
+    }
+
+    /**
       Брат, братан, братишка Когда меня отпустит?
      */
 
@@ -1090,7 +1205,12 @@ class UserProfile {
 
 
 //address row and controls
-        $profile.= $this->addRow(__('Full address') . $this->getTaskCreateControl(), $this->useraddress . $this->getBuildControls());
+        if (!$this->alterCfg['CITY_DISPLAY']) {
+            $renderAddress = $this->AllUserData[$this->login]['cityname'] . ' ' . $this->useraddress;
+        } else {
+            $renderAddress = $this->useraddress;
+        }
+        $profile.= $this->addRow(__('Full address') . $this->getTaskCreateControl(), $renderAddress . $this->getBuildControls());
 //apt data like floor and entrance row
         $profile.= $this->addRow(__('Entrance') . ', ' . __('Floor'), @$this->aptdata['entrance'] . ' ' . @$this->aptdata['floor']);
 //realname row
@@ -1108,7 +1228,7 @@ class UserProfile {
 //phone     
         $profile.= $this->addRow(__('Phone'), $this->phone);
 //and mobile data rows
-        $profile.= $this->addRow(__('Mobile'), $this->mobile);
+        $profile.= $this->addRow(__('Mobile') . $this->getMobileControls(), $this->mobile);
 //Email data row
         $profile.= $this->addRow(__('Email'), $this->mail);
 //payment ID data
@@ -1153,6 +1273,8 @@ class UserProfile {
         $profile.=$this->addRow(__('Freezed'), $passiveicon . web_trigger($this->userdata['Passive']), true);
 //Disable aka Down flag row
         $profile.=$this->addRow(__('Disabled'), $downicon . web_trigger($this->userdata['Down']), true);
+//Deal with it available tasks notification
+        $profile.= $this->getUserDealWithItNotification();
 //Connection details  row
         $profile.= $this->getUserConnectionDetails();
 //User notes row
@@ -1180,6 +1302,8 @@ class UserProfile {
         $profile.=$this->getVlanAssignControls();
 //profile vlan online
         $profile.=$this->getVlanOnline();
+//profile CPE controls
+        $profile.=$this->getUserCpeControls();
 
 //Custom filelds display
         $profile.=cf_FieldShower($this->login);

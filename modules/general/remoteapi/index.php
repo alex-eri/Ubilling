@@ -30,6 +30,16 @@ if ($alterconf['REMOTEAPI_ENABLED']) {
                         if (isset($_GET['param'])) {
                             $billing->resetuser($_GET['param']);
                             log_register("REMOTEAPI RESET User (" . $_GET['param'] . ")");
+                            if ($alterconf['JUNGEN_ENABLED']) {
+                                $junGen = new JunGen;
+                                $junGen->totalRegeneration();
+                                log_register("JUNGEN UHW REGENERATION (" . $_GET['param'] . ")");
+                                print('OK:JUNGEN' . "\n");
+                            }
+                            //may be user ressurection required?
+                            if (@$alterconf['RESETHARD']) {
+                                zb_UserResurrect($_GET['param']);
+                            }
                             die('OK:RESET');
                         } else {
                             die('ERROR:GET_NO_PARAM');
@@ -145,7 +155,7 @@ if ($alterconf['REMOTEAPI_ENABLED']) {
                         if ($alterconf['MYSQLDUMP_PATH']) {
                             $backpath = zb_backup_database(true);
                         } else {
-                            $backpath = zb_backup_tables('*', true);
+                            die(__('You missed an important option') . ': MYSQLDUMP_PATH');
                         }
                         die('OK:BACKUPDB ' . $backpath);
                     }
@@ -191,7 +201,7 @@ if ($alterconf['REMOTEAPI_ENABLED']) {
                                             //dont poll NP devices - commented due testing
                                             // if (!ispos($eachDevice['desc'], 'NP')) {
                                             $deviceTemplate = $allTemplatesAssoc[$eachDevice['modelid']];
-                                            sp_SnmpPollDevice($eachDevice['ip'], $eachDevice['snmp'], $allTemplates, $deviceTemplate, $allusermacs, $alladdress, true);
+                                            sp_SnmpPollDevice($eachDevice['ip'], $eachDevice['snmp'], $allTemplates, $deviceTemplate, $allusermacs, $alladdress, $eachDevice['snmpwrite'], true);
                                             $swpollLogData = date("Y-m-d H:i:s") . ' ' . $eachDevice['ip'] . ' [OK]' . "\n";
                                             print($swpollLogData);
 //                                            } else {
@@ -569,7 +579,7 @@ if ($alterconf['REMOTEAPI_ENABLED']) {
                             $mapDimensions[1] = '800';
                         }
                         $switchesCoverage = sm_MapDrawSwitchesCoverage();
-                        $coverageSwMap = wf_tag('div', false, '', 'id="swmap" style="width: ' . $mapDimensions[0] . 'px; height:' . $mapDimensions[1] . 'px;"');
+                        $coverageSwMap = wf_tag('div', false, '', 'id="ubmap" style="width: ' . $mapDimensions[0] . 'px; height:' . $mapDimensions[1] . 'px;"');
                         $coverageSwMap.=wf_tag('div', true);
                         $coverageSwMap.= sm_MapInitBasic($ym_center, $ym_zoom, $ym_type, $area . $switchesCoverage, '', $ym_lang);
                         die($coverageSwMap);
@@ -733,17 +743,123 @@ if ($alterconf['REMOTEAPI_ENABLED']) {
                     //existential horse
                     if ($_GET['action'] == 'exhorse') {
                         if ($alterconf['EXHORSE_ENABLED']) {
-                            if (date("d") == date("t")) {
-                                $exhorse = new ExistentialHorse();
-                                $exhorse->runHorse();
-                            }
+                            $exhorse = new ExistentialHorse();
+                            $exhorse->runHorse();
+
                             die('OK: EXHORSE');
                         } else {
                             die('ERROR: EXHORSE DISABLED');
                         }
                     }
 
+                    //why do you call?
+                    if ($_GET['action'] == 'whydoyoucall') {
+                        if ($alterconf['ASKOZIA_ENABLED']) {
+                            $whydoyoucall = new WhyDoYouCall();
+                            $whydoyoucall->pollUnansweredCalls();
+                            die('OK: WDYC');
+                        } else {
+                            die('ERROR: ASKOIZA DISABLED');
+                        }
+                    }
 
+                    //why do you call stats collecting
+                    if ($_GET['action'] == 'whydoyoucallstats') {
+                        if ($alterconf['ASKOZIA_ENABLED']) {
+                            $whydoyoucall = new WhyDoYouCall();
+                            $whydoyoucall->saveStats();
+                            die('OK: WDYCSTATS');
+                        } else {
+                            die('ERROR: ASKOIZA DISABLED');
+                        }
+                    }
+
+                    // juniper mx attributes regeneration
+                    if ($_GET['action'] == 'jungen') {
+                        if ($alterconf['JUNGEN_ENABLED']) {
+                            $jungen = new JunGen();
+                            $jungen->totalRegeneration();
+                            die('OK: JUNGEN');
+                        } else {
+                            die('ERROR: JUNGEN DISABLED');
+                        }
+                    }
+
+                    //some juniper mx coa handling
+                    if ($_GET['action'] == 'juncast') {
+                        if ($alterconf['JUNGEN_ENABLED']) {
+                            if ((isset($_GET['login'])) AND ( isset($_GET['run']))) {
+                                $junRun = $_GET['run'];
+                                $junUserName = $_GET['login'];
+                                $juncast = new JunCast();
+                                switch ($junRun) {
+                                    case 'block':
+                                        $juncast->blockUser($junUserName);
+                                        break;
+                                    case 'unblock':
+                                        $juncast->unblockUser($junUserName);
+                                        break;
+                                    case 'terminate':
+                                        $juncast->terminateUser($junUserName);
+                                        break;
+                                }
+                            } else {
+                                die('ERROR: RUN OR PARAM NOT SET');
+                            }
+
+                            die('OK: JUNCAST');
+                        } else {
+                            die('ERROR: JUNGEN DISABLED');
+                        }
+                    }
+
+                    if ($_GET['action'] == 'nasmon') {
+                        if ($alterconf['NASMON_ENABLED']) {
+                            $nasMon = new NasMon();
+                            $nasMon->saveCheckResults();
+                            die('OK: NASMON');
+                        } else {
+                            die('ERROR: NASMON DISABLED');
+                        }
+                    }
+
+                    /*
+                     * Ubilling remote API for Asterisk and other CRM
+                     * -----------------------------
+                     * 
+                     * Format: /?module=remoteapi&key=[ubserial]&action=[action]&number=[+380XXXXXXXXX]&param=[parameter]
+                     * 
+                     * Avaible parameter: login, swstatus
+                     * 
+                     */
+                    if ($_GET['action'] == 'asterisk') {
+                        if ($alterconf['ASTERISK_ENABLED']) {
+                            if (wf_CheckGet(array('number'))) {
+                                if (wf_CheckGet(array('param'))) {
+                                    $asterisk = new Asterisk();
+                                    $result = $asterisk->AsteriskGetInfoApi($_GET['number'], $_GET['param']);
+                                    die($result);
+                                } else {
+                                    die('ERROR: NOT HAVE PARAMETR');
+                                }
+                            } else {
+                                die('ERROR: NOT HAVE NUMBER');
+                            }
+                        } else {
+                            die('ERROR: ASTERISK DISABLED');
+                        }
+                    }
+
+                    // Load MIKROTIK and UBNT Signal data
+                    if ($_GET['action'] == 'mtsigmonpoll') {
+                        if ($alterconf['MTSIGMON_ENABLED']) {
+                            $sigmon = new MTsigmon();
+                            $sigmon->MTDevicesPolling();
+                            die('OK:MTPOLL');
+                        } else {
+                            die('ERROR:MTSIGMON_DISABLED');
+                        }
+                    }
 
                     ////
                     //// End of actions

@@ -87,6 +87,27 @@ class UbillingBranches {
     protected $myTariffs = array();
 
     /**
+     * Contains array of id=>assingdata for services
+     *
+     * @var array
+     */
+    protected $branchesServices = array();
+
+    /**
+     * Contains array of available services as id=>name
+     *
+     * @var array
+     */
+    protected $allServices = array();
+
+    /**
+     * Contains array of accessible services for current administrator as serviceid=>servicename
+     *
+     * @var array
+     */
+    protected $myServices = array();
+
+    /**
      * Contains system alter.ini config as key=>value
      *
      * @var array
@@ -115,6 +136,7 @@ class UbillingBranches {
     const EX_NO_USER = 'EX_EMPTY_LOGIN';
     const EX_NO_CITY = 'EX_EMPTY_CITY';
     const EX_NO_TARIFF = 'EX_EMPTY_TARIFF';
+    const EX_NO_SERVICE = 'EX_EMPTY_SERVICE';
     const EX_NO_ADMIN = 'EX_EMPTY_ADMIN';
 
     public function __construct() {
@@ -195,11 +217,11 @@ class UbillingBranches {
     }
 
     /**
-     * Loads cities assigns from database into protected prop
+     * Loads cities assigns from database into protected prop. Must be executed first before isMyCity() usage.
      * 
      * @return void
      */
-    protected function loadCities() {
+    public function loadCities() {
         $this->allCityNames = zb_AddressGetFullCityNames();
         $query = "SELECT * from `branchescities`";
         $all = simple_queryall($query);
@@ -220,7 +242,7 @@ class UbillingBranches {
      * 
      * @return void
      */
-    protected function loadTariffs() {
+    public function loadTariffs() {
         $this->allTariffs = zb_TariffGetPricesAll();
 
         $query = "SELECT * from `branchestariffs`";
@@ -232,6 +254,33 @@ class UbillingBranches {
 
                 if (isset($this->myBranches[$each['branchid']])) {
                     $this->myTariffs[$each['tariff']] = $each['tariff'];
+                }
+            }
+        }
+    }
+
+    /**
+     * Loads services assings from database into protected properties
+     * 
+     * @return void
+     */
+    public function loadServices() {
+        $servicesTmp = multinet_get_services();
+        if (!empty($servicesTmp)) {
+            foreach ($servicesTmp as $io => $each) {
+                $this->allServices[$each['id']] = $each['desc'];
+            }
+        }
+
+        $query = "SELECT * from `branchesservices`";
+        $all = simple_queryall($query);
+        if (!empty($all)) {
+            foreach ($all as $io => $each) {
+                $this->branchesServices[$each['id']]['branchid'] = $each['branchid'];
+                $this->branchesServices[$each['id']]['serviceid'] = $each['serviceid'];
+
+                if (isset($this->myBranches[$each['branchid']])) {
+                    $this->myServices[$each['serviceid']] = $this->allServices[$each['serviceid']];
                 }
             }
         }
@@ -501,6 +550,122 @@ class UbillingBranches {
     }
 
     /**
+     * Checks is city accessible by current administrator
+     * 
+     * @param int $cityId
+     * 
+     * @return bool
+     */
+    public function isMyCity($cityId) {
+        $result = false;
+        if ($this->branchesEnabled) {
+            if (cfr('ROOT')) {
+                $result = true;
+            } else {
+                if (cfr('BRANCHES')) {
+                    if (isset($this->myCities[$cityId])) {
+                        $result = true;
+                    } else {
+                        $result = false;
+                    }
+                } else {
+                    $result = true;
+                }
+            }
+        } else {
+            $result = true;
+        }
+        return ($result);
+    }
+
+    /**
+     * Checks is tariff accessible by current administrator
+     * 
+     * @param string $tariffName
+     * 
+     * @return bool
+     */
+    public function isMyTariff($tariffName) {
+        $result = false;
+        if ($this->branchesEnabled) {
+            if (cfr('ROOT')) {
+                $result = true;
+            } else {
+                if (cfr('BRANCHES')) {
+                    if (isset($this->myTariffs[$tariffName])) {
+                        $result = true;
+                    } else {
+                        $result = false;
+                    }
+                } else {
+                    $result = true;
+                }
+            }
+        } else {
+            $result = true;
+        }
+        return ($result);
+    }
+
+    /**
+     * Checks is service accessible by current administrator
+     * 
+     * @param int $serviceId
+     * 
+     * @return bool
+     */
+    public function isMyService($serviceId) {
+        $result = false;
+        if ($this->branchesEnabled) {
+            if (cfr('ROOT')) {
+                $result = true;
+            } else {
+                if (cfr('BRANCHES')) {
+                    if (isset($this->myServices[$serviceId])) {
+                        $result = true;
+                    } else {
+                        $result = false;
+                    }
+                } else {
+                    $result = true;
+                }
+            }
+        } else {
+            $result = true;
+        }
+        return ($result);
+    }
+
+    /**
+     * Checks is branch accessible by current administrator
+     * 
+     * @param int $branchId
+     * 
+     * @return bool
+     */
+    public function isMyBranch($branchId) {
+        $result = false;
+        if ($this->branchesEnabled) {
+            if (cfr('ROOT')) {
+                $result = true;
+            } else {
+                if (cfr('BRANCHES')) {
+                    if (isset($this->myBranches[$branchId])) {
+                        $result = true;
+                    } else {
+                        $result = false;
+                    }
+                } else {
+                    $result = true;
+                }
+            }
+        } else {
+            $result = true;
+        }
+        return ($result);
+    }
+
+    /**
      * Returns user assigned branch
      * 
      * @param string $login
@@ -591,11 +756,11 @@ class UbillingBranches {
      */
     public function tariffAssignBranch($branchId, $tariff) {
         $branchId = vf($branchId, 3);
-        $tariff = vf($tariff);
+        $tariffF = mysql_real_escape_string($tariff);
         if (isset($this->branches[$branchId])) {
             if (!empty($tariff)) {
                 $query = "INSERT INTO `branchestariffs` (`id`,`branchid`,`tariff`) VALUES ";
-                $query.="(NULL,'" . $branchId . "','" . $tariff . "');";
+                $query.="(NULL,'" . $branchId . "','" . $tariffF . "');";
                 nr_query($query);
                 log_register('BRANCH ASSIGN [' . $branchId . '] TARIFF `' . $tariff . '`');
             } else {
@@ -617,14 +782,64 @@ class UbillingBranches {
      */
     public function tariffDeassignBranch($branchId, $tariff) {
         $branchId = vf($branchId, 3);
-        $tariff = vf($tariff);
+        $tariffF = mysql_real_escape_string($tariff);
         if (isset($this->branches[$branchId])) {
             if (!empty($tariff)) {
-                $query = "DELETE from `branchestariffs` WHERE `branchid`='" . $branchId . "' AND `tariff`='" . $tariff . "';";
+                $query = "DELETE from `branchestariffs` WHERE `branchid`='" . $branchId . "' AND `tariff`='" . $tariffF . "';";
                 nr_query($query);
                 log_register('BRANCH DEASSIGN [' . $branchId . '] TARIFF `' . $tariff . '`');
             } else {
                 throw new Exception(self::EX_NO_TARIFF);
+            }
+        } else {
+            throw new Exception(self::EX_NO_BRANCH);
+        }
+    }
+
+    /**
+     * Perfoms service to branch assign
+     * 
+     * @param int $branchId
+     * @param int $serviceId
+     * 
+     * @return void
+     */
+    public function serviceAssignBranch($branchId, $serviceId) {
+        $branchId = vf($branchId, 3);
+        $serviceId = vf($serviceId, 3);
+        if (isset($this->branches[$branchId])) {
+            if (!empty($serviceId)) {
+                $query = "INSERT INTO `branchesservices` (`id`,`branchid`,`serviceid`) VALUES ";
+                $query.="(NULL,'" . $branchId . "','" . $serviceId . "');";
+                nr_query($query);
+                log_register('BRANCH ASSIGN [' . $branchId . '] SERVICE [' . $serviceId . ']');
+            } else {
+                throw new Exception(self::EX_NO_SERVICE);
+            }
+        } else {
+            throw new Exception(self::EX_NO_BRANCH);
+        }
+    }
+
+    /**
+     * Performs deletion of service assignation to some branch
+     * 
+     * @param int $branchId
+     * @param int $serviceId
+     * @throws Exception
+     * 
+     * @return void
+     */
+    public function serviceDeassignBranch($branchId, $serviceId) {
+        $branchId = vf($branchId, 3);
+        $tariff = vf($serviceId, 3);
+        if (isset($this->branches[$branchId])) {
+            if (!empty($serviceId)) {
+                $query = "DELETE from `branchesservices` WHERE `branchid`='" . $branchId . "' AND `serviceid`='" . $serviceId . "';";
+                nr_query($query);
+                log_register('BRANCH DEASSIGN [' . $branchId . '] SERVICE [' . $serviceId . ']');
+            } else {
+                throw new Exception(self::EX_NO_SERVICE);
             }
         } else {
             throw new Exception(self::EX_NO_BRANCH);
@@ -642,9 +857,15 @@ class UbillingBranches {
         if (!wf_CheckGet(array('userbranch'))) {
             if (cfr('BRANCHES')) {
                 $result.=wf_Link(self::URL_ME . '&userlist=true', wf_img('skins/ukv/users.png') . ' ' . __('Users'), false, 'ubButton') . ' ';
-                $result.=wf_Link(self::URL_ME . '&userreg=true', wf_img('skins/ukv/add.png') . ' ' . __('Users registration'), false, 'ubButton') . ' ';
-                $result.=wf_Link(self::URL_ME . '&finreport=true', wf_img('skins/icon_dollar.gif') . ' ' . __('Finance report'), false, 'ubButton') . ' ';
-                $result.=wf_Link(self::URL_ME . '&sigreport=true', wf_img('skins/ukv/report.png') . ' ' . __('Signup report'), false, 'ubButton') . ' ';
+                if (cfr('BRANCHESREG')) {
+                    $result.=wf_Link('?module=userreg&branchesback=true', wf_img('skins/ukv/add.png') . ' ' . __('Users registration'), false, 'ubButton') . ' ';
+                }
+                if (cfr('BRANCHESFINREP')) {
+                    $result.=wf_Link(self::URL_ME . '&finreport=true', wf_img('skins/icon_dollar.gif') . ' ' . __('Finance report'), false, 'ubButton') . ' ';
+                }
+                if (cfr('BRANCHESSIGREP')) {
+                    $result.=wf_Link(self::URL_ME . '&sigreport=true', wf_img('skins/ukv/report.png') . ' ' . __('Signup report'), false, 'ubButton') . ' ';
+                }
             }
             if (cfr('BRANCHESCONF')) {
                 $result.=wf_Link(self::URL_ME . '&settings=true', wf_img('skins/icon_extended.png') . ' ' . __('Settings'), false, 'ubButton') . ' ';
@@ -1039,36 +1260,39 @@ class UbillingBranches {
         $result = '';
         //manually preloading cities bingings
         $this->loadCities();
-        if (!empty($this->branchesCities)) {
-            $cells = wf_TableCell(__('ID'));
-            $cells.=wf_TableCell(__('Branch'));
-            $cells.= wf_TableCell(__('City'));
-            $cells.= wf_TableCell(__('Actions'));
-            $rows = wf_TableRow($cells, 'row1');
-            foreach ($this->branchesCities as $io => $each) {
-                $cells = wf_TableCell($io);
-                $cells.=wf_TableCell($this->getBranchName($each['branchid']));
-                $cells.= wf_TableCell($this->allCityNames[$each['cityid']]);
-                $actControls = wf_JSAlert(self::URL_ME . '&settings=true&deletecity=' . $each['cityid'] . '&citybranchid=' . $each['branchid'], web_delete_icon(), $this->messages->getDeleteAlert());
-                $cells.= wf_TableCell($actControls);
-                $rows.= wf_TableRow($cells, 'row3');
-            }
-            $result.=wf_TableBody($rows, '100%', 0, 'sortable');
-        }
-
-        //assign form
-        $branchesTmp = array();
         if (!empty($this->branches)) {
-            foreach ($this->branches as $io => $each) {
-                $branchesTmp[$io] = $each['name'];
+            if (!empty($this->branchesCities)) {
+                $cells = wf_TableCell(__('ID'));
+                $cells.=wf_TableCell(__('Branch'));
+                $cells.= wf_TableCell(__('City'));
+                $cells.= wf_TableCell(__('Actions'));
+                $rows = wf_TableRow($cells, 'row1');
+                foreach ($this->branchesCities as $io => $each) {
+                    $cells = wf_TableCell($io);
+                    $cells.=wf_TableCell($this->getBranchName($each['branchid']));
+                    $cells.= wf_TableCell($this->allCityNames[$each['cityid']]);
+                    $actControls = wf_JSAlert(self::URL_ME . '&settings=true&deletecity=' . $each['cityid'] . '&citybranchid=' . $each['branchid'], web_delete_icon(), $this->messages->getDeleteAlert());
+                    $cells.= wf_TableCell($actControls);
+                    $rows.= wf_TableRow($cells, 'row3');
+                }
+                $result.=wf_TableBody($rows, '100%', 0, 'sortable');
+            } else {
+                $result.=$this->messages->getStyledMessage(__('No branches cities assigns available'), 'warning');
             }
+
+            //assign form
+            $branchesTmp = array();
+            if (!empty($this->branches)) {
+                foreach ($this->branches as $io => $each) {
+                    $branchesTmp[$io] = $each['name'];
+                }
+            }
+
+            $inputs = wf_Selector('newcitybranchid', $branchesTmp, __('Branch'), '', false) . ' ';
+            $inputs.= wf_Selector('newcityid', $this->allCityNames, __('City'), '', false) . ' ';
+            $inputs.= wf_Submit(__('Assign'));
+            $result.=wf_Form('', 'POST', $inputs, 'glamour');
         }
-
-        $inputs = wf_Selector('newcitybranchid', $branchesTmp, __('Branch'), '', false) . ' ';
-        $inputs.= wf_Selector('newcityid', $this->allCityNames, __('City'), '', false) . ' ';
-        $inputs.= wf_Submit(__('Assign'));
-        $result.=wf_Form('', 'POST', $inputs, 'glamour');
-
         return ($result);
     }
 
@@ -1081,42 +1305,91 @@ class UbillingBranches {
         $result = '';
         //manually preloading tariffs bingings
         $this->loadTariffs();
-        if (!empty($this->branchesTariffs)) {
-            $cells = wf_TableCell(__('ID'));
-            $cells.=wf_TableCell(__('Branch'));
-            $cells.= wf_TableCell(__('Tariff'));
-            $cells.= wf_TableCell(__('Actions'));
-            $rows = wf_TableRow($cells, 'row1');
-            foreach ($this->branchesTariffs as $io => $each) {
-                $cells = wf_TableCell($io);
-                $cells.=wf_TableCell($this->getBranchName($each['branchid']));
-                $cells.= wf_TableCell($each['tariff']);
-                $actControls = wf_JSAlert(self::URL_ME . '&settings=true&deletetariff=' . $each['tariff'] . '&tariffbranchid=' . $each['branchid'], web_delete_icon(), $this->messages->getDeleteAlert());
-                $cells.= wf_TableCell($actControls);
-                $rows.= wf_TableRow($cells, 'row3');
-            }
-            $result.=wf_TableBody($rows, '100%', 0, 'sortable');
-        }
-
-        //assign form
-        $branchesTmp = array();
         if (!empty($this->branches)) {
-            foreach ($this->branches as $io => $each) {
-                $branchesTmp[$io] = $each['name'];
+            if (!empty($this->branchesTariffs)) {
+                $cells = wf_TableCell(__('ID'));
+                $cells.=wf_TableCell(__('Branch'));
+                $cells.= wf_TableCell(__('Tariff'));
+                $cells.= wf_TableCell(__('Actions'));
+                $rows = wf_TableRow($cells, 'row1');
+                foreach ($this->branchesTariffs as $io => $each) {
+                    $cells = wf_TableCell($io);
+                    $cells.=wf_TableCell($this->getBranchName($each['branchid']));
+                    $cells.= wf_TableCell($each['tariff']);
+                    $actControls = wf_JSAlert(self::URL_ME . '&settings=true&deletetariff=' . $each['tariff'] . '&tariffbranchid=' . $each['branchid'], web_delete_icon(), $this->messages->getDeleteAlert());
+                    $cells.= wf_TableCell($actControls);
+                    $rows.= wf_TableRow($cells, 'row3');
+                }
+                $result.=wf_TableBody($rows, '100%', 0, 'sortable');
+            } else {
+                $result.=$this->messages->getStyledMessage(__('No branches tariffs assigns available'), 'warning');
             }
-        }
-        $tariffsTmp = array();
-        if (!empty($this->allTariffs)) {
-            foreach ($this->allTariffs as $tariffName => $tariffFee) {
-                $tariffsTmp[$tariffName] = $tariffName;
+
+            //assign form
+            $branchesTmp = array();
+            if (!empty($this->branches)) {
+                foreach ($this->branches as $io => $each) {
+                    $branchesTmp[$io] = $each['name'];
+                }
             }
+            $tariffsTmp = array();
+            if (!empty($this->allTariffs)) {
+                foreach ($this->allTariffs as $tariffName => $tariffFee) {
+                    $tariffsTmp[$tariffName] = $tariffName;
+                }
+            }
+
+            $inputs = wf_Selector('newtariffbranchid', $branchesTmp, __('Branch'), '', false) . ' ';
+            $inputs.= wf_Selector('newtariffname', $tariffsTmp, __('Tariff'), '', false) . ' ';
+            $inputs.= wf_Submit(__('Assign'));
+            $result.=wf_Form('', 'POST', $inputs, 'glamour');
         }
+        return ($result);
+    }
 
-        $inputs = wf_Selector('newtariffbranchid', $branchesTmp, __('Branch'), '', false) . ' ';
-        $inputs.= wf_Selector('newtariffname', $tariffsTmp, __('Tariff'), '', false) . ' ';
-        $inputs.= wf_Submit(__('Assign'));
-        $result.=wf_Form('', 'POST', $inputs, 'glamour');
+    /**
+     * Returns branches=>services assign list and config form
+     * 
+     * @return string
+     */
+    public function renderServicesConfigForm() {
+        $result = '';
+        //manually preloading services bindings
+        $this->loadServices();
+        if (!empty($this->branches)) {
+            if (!empty($this->branchesServices)) {
+                $cells = wf_TableCell(__('ID'));
+                $cells.=wf_TableCell(__('Branch'));
+                $cells.= wf_TableCell(__('Service'));
+                $cells.= wf_TableCell(__('Actions'));
+                $rows = wf_TableRow($cells, 'row1');
+                foreach ($this->branchesServices as $io => $each) {
+                    $cells = wf_TableCell($io);
+                    $cells.=wf_TableCell($this->getBranchName($each['branchid']));
+                    $cells.= wf_TableCell($this->allServices[$each['serviceid']]);
+                    $actControls = wf_JSAlert(self::URL_ME . '&settings=true&deleteservice=' . $each['serviceid'] . '&servicebranchid=' . $each['branchid'], web_delete_icon(), $this->messages->getDeleteAlert());
+                    $cells.= wf_TableCell($actControls);
+                    $rows.= wf_TableRow($cells, 'row3');
+                }
+                $result.=wf_TableBody($rows, '100%', 0, 'sortable');
+            } else {
+                $result.=$this->messages->getStyledMessage(__('No branches services assigns available'), 'warning');
+            }
 
+            //assign form
+            $branchesTmp = array();
+            if (!empty($this->branches)) {
+                foreach ($this->branches as $io => $each) {
+                    $branchesTmp[$io] = $each['name'];
+                }
+            }
+
+
+            $inputs = wf_Selector('newservicebranchid', $branchesTmp, __('Branch'), '', false) . ' ';
+            $inputs.= wf_Selector('newserviceid', $this->allServices, __('Service'), '', false) . ' ';
+            $inputs.= wf_Submit(__('Assign'));
+            $result.=wf_Form('', 'POST', $inputs, 'glamour');
+        }
         return ($result);
     }
 
@@ -1136,6 +1409,8 @@ class UbillingBranches {
             $result.=$this->renderCitiesConfigForm();
             $result.= wf_tag('h3') . __('Tariffs') . wf_tag('h3', true);
             $result.=$this->renderTariffsConfigForm();
+            $result.= wf_tag('h3') . __('Services') . wf_tag('h3', true);
+            $result.=$this->renderServicesConfigForm();
         } else {
             $result = $this->messages->getStyledMessage(__('Access denied'), 'error');
         }
@@ -1171,12 +1446,14 @@ class UbillingBranches {
      * 
      * @return string
      */
-    protected function branchSelector($name, $selected = '') {
+    public function branchSelector($name, $selected = '') {
         $result = '';
-        if (!empty($this->myBranches)) {
+        if (!empty($this->branches)) {
             $params = array();
-            foreach ($this->myBranches as $branchId => $adminLogin) {
-                $params[$branchId] = $this->getBranchName($branchId);
+            foreach ($this->branches as $branchId => $branchData) {
+                if ($this->isMyBranch($branchId)) {
+                    $params[$branchId] = $this->getBranchName($branchId);
+                }
             }
             if (!empty($params)) {
                 $result = wf_Selector($name, $params, $result, $selected, false);
@@ -1242,7 +1519,7 @@ class UbillingBranches {
                 //change is really reqired?
                 if (!wf_CheckPost(array('newuserbranchdelete'))) {
                     if ($currentBranchId != $newBranchId) {
-                        if (isset($this->myBranches[$newBranchId])) {
+                        if ($this->isMyBranch($newBranchId)) {
                             $this->userDeleteBranch($userLogin);
                             $this->userAssignBranch($newBranchId, $userLogin);
                             rcms_redirect(self::URL_ME . '&userbranch=' . $userLogin);
@@ -1267,35 +1544,6 @@ class UbillingBranches {
         if (!empty($result)) {
             show_window(__('Result'), $result);
         }
-    }
-
-    /**
-     * Renders user registration wizard-like form
-     * 
-     * @return string
-     */
-    public function renderRegistrationForm() {
-        $result = '';
-        $this->loadCities();
-        $this->loadTariffs();
-        if (!empty($this->myCities)) {
-            $cityTmp = array('' => '-');
-            $cityTmp += $this->myCities;
-            
-            if (!wf_CheckPost(array('regusercityid'))) {
-                $citySelector = wf_SelectorAC('regusercityid', $cityTmp, __('City') . ' ' . web_city_icon(), '', true);
-            } else {
-                $catchedCityId = vf($_POST['regusercityid'], 3);
-                $citySelector = wf_HiddenInput('regusercityid', $catchedCityId);
-                $citySelector.= $this->myCities[$catchedCityId] . ' ' . web_ok_icon() . wf_tag('br');
-            }
-
-            $inputs = $citySelector;
-            $result.=wf_Form('', 'POST', $inputs, 'glamour');
-        } else {
-            $result.=$this->messages->getStyledMessage(__('Your branch have no cities assigned'), 'error');
-        }
-        return ($result);
     }
 
 }

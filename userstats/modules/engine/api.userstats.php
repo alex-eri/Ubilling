@@ -535,7 +535,7 @@ function zbs_UserShowAgentData($login) {
     $result.='email=' . $email . "\n";
     $result.='credit=' . @$userdata['Credit'] . "\n";
     $result.='creditexpire=' . $credexpire . "\n";
-    $result.='payid=' . ip2int($userdata['IP']) . "\n";
+    $result.='payid=' . ip2long($userdata['IP']) . "\n";
     $result.='contract=' . $contract . "\n";
     $result.='tariff=' . $userdata['Tariff'] . "\n";
     $result.='tariffnm=' . $userdata['TariffChange'] . "\n";
@@ -632,7 +632,7 @@ function zbs_UserShowXmlAgentData($login) {
     if ($us_config['OPENPAYZ_REALID']) {
         $paymentid = zbs_PaymentIDGet($login);
     } else {
-        $paymentid = ip2int($userdata['IP']);
+        $paymentid = ip2long($userdata['IP']);
     }
 
     if ($userdata['CreditExpire'] != 0) {
@@ -773,6 +773,34 @@ function zbs_TariffGetSpeed($tariff) {
         }
     } else {
         $result = __('None');
+    }
+    return ($result);
+}
+
+/**
+ * Returns all tariff speeds
+ * 
+ * @param string $tariff
+ * @return array
+ */
+function zbs_TariffGetAllSpeeds() {
+    $offset = 1024;
+    $query = "SELECT * from `speeds`";
+    $speedData = simple_queryall($query);
+    $result = array();
+    if (!empty($speedData)) {
+        foreach ($speedData as $io => $each) {
+            if ($each['speeddown'] != 0) {
+                if ($each['speeddown'] < $offset) {
+                    $speed = $each['speeddown'] . ' ' . __('Kbit/s');
+                } else {
+                    $speed = ($each['speeddown'] / $offset) . ' ' . __('Mbit/s');
+                }
+            } else {
+                $speed = __('Unlimited');
+            }
+            $result[$each['tariff']] = $speed;
+        }
     }
     return ($result);
 }
@@ -989,7 +1017,7 @@ function zbs_UserShowProfile($login) {
     if ($us_config['OPENPAYZ_REALID']) {
         $paymentid = zbs_PaymentIDGet($login);
     } else {
-        $paymentid = ip2int($userdata['IP']);
+        $paymentid = ip2long($userdata['IP']);
     }
 
     //payment id qr dialog
@@ -1275,6 +1303,12 @@ function zbs_ModulesMenuShow($icons = false) {
 
     $count = 1;
     $result = '';
+    //default home link
+    if ($icons) {
+        $result.='<li><a href="index.php"><img src="' . $skinPath . 'iconz/home.gif"> ' . __('Home') . '</a></li>';
+    } else {
+        $result.='<li><a href="index.php"> ' . __('Home') . '</a></li>';
+    }
     if (!empty($all_modules)) {
         foreach ($all_modules as $eachmodule) {
             if ($icons == true) {
@@ -1307,6 +1341,18 @@ function zbs_ModulesMenuShow($icons = false) {
             }
         }
     }
+
+    if ($globconf['auth'] == 'login') {
+        if (isset($globconf['INTRO_MODE'])) {
+            if ($globconf['INTRO_MODE'] == '2') {
+                if ((!isset($_COOKIE['upassword'])) OR ( @$_COOKIE['upassword'] == 'nopassword')) {
+                    $result = zbs_IntroLoadText();
+                }
+            }
+        }
+    }
+
+
     return($result);
 }
 
@@ -1810,6 +1856,16 @@ function zbs_AnnouncementsNotice() {
         $result.=la_TableBody($rows, '70%', 0, '');
         show_window('', $result);
     }
+}
+
+/**
+ * Loads current userstats intro text
+ * 
+ * @return string
+ */
+function zbs_IntroLoadText() {
+    $result = zbs_StorageGet('ZBS_INTRO');
+    return ($result);
 }
 
 ?>

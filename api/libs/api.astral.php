@@ -57,10 +57,11 @@ function wf_Form($action, $method, $inputs, $class = '', $legend = '') {
  * @param  string $value current value
  * @param  bool   $br append new line
  * @param  string $size input size
+ * @param  string $pattern input check pattern. Avaible: geo, mobile, finance
  * @return string
  *
  */
-function wf_TextInput($name, $label = '', $value = '', $br = false, $size = '') {
+function wf_TextInput($name, $label = '', $value = '', $br = false, $size = '', $pattern = '') {
     $inputid = wf_InputId();
     //set size
     if ($size != '') {
@@ -73,7 +74,12 @@ function wf_TextInput($name, $label = '', $value = '', $br = false, $size = '') 
     } else {
         $newline = '';
     }
-    $result = '<input type="text" name="' . $name . '" value="' . $value . '" ' . $input_size . ' id="' . $inputid . '">' . "\n";
+    // We will verify that we correctly enter data by input type
+    $pattern = ($pattern == 'geo') ? 'pattern="-?\d{1,2}(\.\d+)\s?,\s?-?\d{1,3}(\.\d+)" placeholder="0.00000,0.00000"' : $pattern;
+    $pattern = ($pattern == 'mobile') ? 'pattern="\+?(\d{2})?\d{10}" placeholder="(+)(38)0500000000"' : $pattern;
+    $pattern = ($pattern == 'finance') ? 'pattern="\d+(\.\d+)?" placeholder="0(.00)"' : $pattern;
+
+    $result = '<input type="text" name="' . $name . '" value="' . $value . '" ' . $input_size . ' id="' . $inputid . '" ' . $pattern . '>' . "\n";
     if ($label != '') {
         $result.=' <label for="' . $inputid . '">' . __($label) . '</label>' . "\n";
         ;
@@ -340,10 +346,12 @@ function wf_Trigger($name, $label = '', $state = '', $br = false) {
  * @param string  $label text label for input
  * @param string  $selected selected $value for selector
  * @param bool    $br append new line
+ * @param bool    $sort alphabetical sorting of params array by value
+ * 
  * @return  string
  *
  */
-function wf_Selector($name, $params, $label, $selected = '', $br = false) {
+function wf_Selector($name, $params, $label, $selected = '', $br = false, $sort = false) {
     $inputid = wf_InputId();
     if ($br) {
         $newline = '<br>';
@@ -352,14 +360,10 @@ function wf_Selector($name, $params, $label, $selected = '', $br = false) {
     }
     $result = '<select name="' . $name . '" id="' . $inputid . '">';
     if (!empty($params)) {
+        ($sort) ? asort($params) : $params;
         foreach ($params as $value => $eachparam) {
-            $sel_flag = '';
-            if ($selected != '') {
-                if ($selected == $value) {
-                    $sel_flag = 'SELECTED';
-                }
-            }
-            $result.='<option value="' . $value . '" ' . $sel_flag . '>' . $eachparam . '</option>' . "\n";
+            $flag_selected = (($selected == $value) AND ( $selected != '')) ? 'SELECTED' : ''; // !='' because 0 values possible
+            $result.='<option value="' . $value . '" ' . $flag_selected . '>' . $eachparam . '</option>' . "\n";
         }
     }
 
@@ -1642,7 +1646,8 @@ function wf_JuiComboBox($name, $params, $label, $selected = '', $br = false) {
 
     if (!empty($params)) {
         foreach ($params as $io => $each) {
-            $select.='<option value="' . $io . '">' . $each . '</option>' . "\n";
+            $flag_selected = (!empty($selected) and $selected == $io) ? 'SELECTED' : '';
+            $select.='<option value="' . $io . '" ' . $flag_selected . '>' . $each . '</option>' . "\n";
         }
     }
 
@@ -2180,6 +2185,16 @@ function wf_gchartsLine($params, $title = '', $width = '', $height = '', $option
 function wf_BackLink($url, $title = '', $br = false, $class = 'ubButton') {
     $title = (empty($title)) ? __('Back') : __($title);
     $result = wf_Link($url, wf_img('skins/back.png') . ' ' . $title, $br, $class);
+    return ($result);
+}
+
+/**
+ * Returns form disabler JS code, for preventing duplicating POST requests
+ * 
+ * @return string
+ */
+function wf_FormDisabler() {
+    $result = wf_tag('script', false, '', 'type="text/javascript" language="javascript" src="modules/jsc/form-disabler.js"') . wf_tag('script', true);
     return ($result);
 }
 

@@ -1494,16 +1494,16 @@ class UkvSystem {
         return ($result);
     }
 
-    /*
-     * extract ajax data for JQuery data tables
+    /**
+     * Extracts ajax data for JQuery data tables
+     * 
+     * @return void
      */
-
     public function ajaxUsers() {
         global $ubillingConfig;
         $altcfg = $ubillingConfig->getAlter();
+        $json = new wf_JqDtHelper();
 
-        $result = '{ 
-                  "aaData": [ ';
         if (!empty($this->users)) {
             foreach ($this->users as $io => $each) {
 
@@ -1519,32 +1519,25 @@ class UkvSystem {
                 } else {
                     $city = '';
                 }
-
 //activity flag
                 $activity = ($each['active']) ? web_bool_led($each['active']) . ' ' . __('Yes') : web_bool_led($each['active']) . ' ' . __('No');
                 $activity = str_replace('"', '', $activity);
-
 //profile link
                 $profileLink = wf_Link(self::URL_USERS_PROFILE . $each['id'], web_profile_icon(), false) . ' ';
-                $profileLink = str_replace('"', '', $profileLink);
-                $profileLink = str_replace("\n", '', $profileLink);
+//building data array
+                $data[] = $profileLink . $city . $each['street'] . ' ' . $each['build'] . $apt;
+                $data[] = $each['realname'];
+                $data[] = $each['contract'];
+                $data[] = @$this->tariffs[$each['tariffid']]['tariffname'];
+                $data[] = $activity;
+                $data[] = $each['cash'];
 
-
-                $result.='
-                    [
-                    "' . $profileLink . $city . $each['street'] . ' ' . $each['build'] . $apt . '",
-                    "' . $each['realname'] . '",
-                    "' . $each['contract'] . '",
-                    "' . @$this->tariffs[$each['tariffid']]['tariffname'] . '",
-                    "' . $activity . '",
-                    "' . $each['cash'] . '"
-                    ],';
+                $json->addRow($data);
+                unset($data);
             }
-            $result = substr($result, 0, -1);
         }
-        $result.='] 
-        }';
-        die($result);
+
+        $json->getJson();
     }
 
     /**
@@ -1727,7 +1720,7 @@ class UkvSystem {
     /**
      * process of uploading of bank statement
      * 
-     * @return void
+     * @return array
      */
     public function bankstaDoUpload() {
         $uploaddir = self::BANKSTA_PATH;
@@ -1837,7 +1830,7 @@ class UkvSystem {
                 for ($i = 0; $i <= $num_rec; $i++) {
                     $eachRow = $dbf->getRowAssoc($i);
                     if (!empty($eachRow)) {
-                        if (!empty($eachRow[self::BANKSTA_CONTRACT])) {
+                        if (@$eachRow[self::BANKSTA_CONTRACT] != '') {
                             $newDate = date("Y-m-d H:i:s");
                             $newContract = trim($eachRow[self::BANKSTA_CONTRACT]);
                             $newContract = mysql_real_escape_string($newContract);
@@ -3268,7 +3261,6 @@ class UkvSystem {
                 if (ispos($eachRegDate, $showMonth)) {
                     foreach ($eachRegUsers as $ix => $eachUserId) {
                         $displayTmp[] = $eachUserId;
-                        
                     }
                 }
             }
@@ -3707,16 +3699,19 @@ class UkvSystem {
                                 $complexFlag = false;
                             }
                         }
-                        $cells = wf_TableCell(wf_Link(self::URL_USERS_PROFILE . $userId, web_profile_icon(__('Profile') . ' ' . __('UKV'))) . ' ' . $userContract);
-                        $cells.= wf_TableCell($userTariff);
 
-                        $cells.= wf_TableCell(web_bool_led($complexFlag));
-                        $cells.= wf_TableCell(wf_Link('?module=userprofile&username=' . $userLogin, web_profile_icon(__('Profile') . ' ' . __('Internet'))) . ' ' . $this->userGetFullAddress($userId));
-                        $cells.= wf_TableCell($this->users[$userId]['realname']);
-                        $cells.= wf_TableCell($this->tariffs[$this->users[$userId]['tariffid']]['tariffname']);
-                        $cells.= wf_TableCell($this->users[$userid]['cash']);
-                        $cells.= wf_TableCell(web_bool_led($this->users[$userId]['active']));
-                        $rows.= wf_TableRow($cells, 'row3');
+                        if (($this->users[$userId]['active']) OR ( $complexFlag)) {
+                            $cells = wf_TableCell(wf_Link(self::URL_USERS_PROFILE . $userId, web_profile_icon(__('Profile') . ' ' . __('UKV'))) . ' ' . $userContract);
+                            $cells.= wf_TableCell($userTariff);
+
+                            $cells.= wf_TableCell(web_bool_led($complexFlag));
+                            $cells.= wf_TableCell(wf_Link('?module=userprofile&username=' . $userLogin, web_profile_icon(__('Profile') . ' ' . __('Internet'))) . ' ' . $this->userGetFullAddress($userId));
+                            $cells.= wf_TableCell($this->users[$userId]['realname']);
+                            $cells.= wf_TableCell($this->tariffs[$this->users[$userId]['tariffid']]['tariffname']);
+                            $cells.= wf_TableCell($this->users[$userid]['cash']);
+                            $cells.= wf_TableCell(web_bool_led($this->users[$userId]['active']));
+                            $rows.= wf_TableRow($cells, 'row3');
+                        }
                     }
 
                     $reportData = wf_TableBody($rows, '100%', 0, 'sortable');

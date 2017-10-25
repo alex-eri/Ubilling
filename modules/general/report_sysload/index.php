@@ -22,10 +22,30 @@ if (cfr('SYSLOAD')) {
     if (wf_CheckGet(array('ajaxdbstats'))) {
         die(zb_DBStatsRender());
     }
-
+    // Cache keys info
+    if (wf_CheckGet(array('ajaxcacheinfo'))) {
+        die(zb_ListCacheInform());
+    }
+    // Cache keys and data info
+    if (wf_CheckGet(array('ajaxcachedata'))) {
+        die(zb_ListCacheInform('data'));
+    }
+    // Clear cache
+    if (wf_CheckGet(array('ajaxcacheclear'))) {
+        die(zb_ListCacheInform('clear'));
+    }
+    //memcached stats
+    if (wf_CheckGet(array('ajaxmemcachedstats'))) {
+        die(web_MemCachedRenderStats());
+    }
+    //redis stats
+    if (wf_CheckGet(array('ajaxredisstats'))) {
+        die(web_RedisRenderStats());
+    }
     $globconf = $ubillingConfig->getBilling();
     $alterconf = $ubillingConfig->getAlter();
     $monit_url = $globconf['PHPSYSINFO'];
+    $cache_info = $alterconf['UBCACHE_STORAGE'];
 
     //custom scripts output handling. We must run this before all others.
     if (isset($alterconf['SYSLOAD_CUSTOM_SCRIPTS'])) {
@@ -38,9 +58,6 @@ if (cfr('SYSLOAD')) {
     $sysInfoData = '';
     //phpinfo()
     $phpInfoCode = wf_modal(__('Check required PHP extensions'), __('Check required PHP extensions'), zb_CheckPHPExtensions(), 'ubButton', '800', '600');
-    if ($alterconf['UBCACHE_STORAGE'] == 'memcached') {
-        $phpInfoCode.= wf_modal(__('Stats') . ' ' . __('Memcached'), __('Stats') . ' ' . __('Memcached'), web_MemCachedRenderStats(), 'ubButton', '800', '600');
-    }
     $phpInfoCode.= wf_tag('br');
     $phpInfoCode.= wf_tag('iframe', false, '', 'src="?module=report_sysload&phpinfo=true" width="1000" height="500" frameborder="0"') . wf_tag('iframe', true);
     $sysInfoData.= wf_modalAuto(__('Information about PHP version'), __('Information about PHP version'), $phpInfoCode, 'ubButton');
@@ -56,8 +73,26 @@ if (cfr('SYSLOAD')) {
 
     //phpsysinfo frame
     if (!empty($monit_url)) {
-        $monitCode = wf_tag('iframe', false, '', 'src="' . $monit_url . '" width="1000" height="500" frameborder="0"') . wf_tag('iframe', true);
-        $sysInfoData.= wf_modalAuto(__('phpSysInfo'), __('System health with phpSysInfo'), $monitCode, 'ubButton');
+        if (file_exists($monit_url . '/index.php')) {
+            $monitCode = wf_tag('iframe', false, '', 'src="' . $monit_url . '" width="1000" height="500" frameborder="0"') . wf_tag('iframe', true);
+            $sysInfoData.= wf_modalAuto(__('phpSysInfo'), __('System health with phpSysInfo'), $monitCode, 'ubButton');
+        } else {
+            //installing phpsysinfo
+            if (wf_CheckGet(array('phpsysinfoinstall'))) {
+                zb_InstallPhpsysinfo();
+                die(wf_tag('span',false,'alert_success').__('Done').  wf_tag('span',true));
+            }
+            $monitCode = wf_AjaxLink('?module=report_sysload&phpsysinfoinstall=true', __('Download') . ' ' . __('phpSysInfo'), 'phpsysinfoinstall', true, 'ubButton');
+            $monitCode.= wf_AjaxContainer('phpsysinfoinstall');
+
+            $sysInfoData.= wf_modalAuto(__('phpSysInfo'), __('System health with phpSysInfo'), $monitCode, 'ubButton');
+        }
+    }
+
+    //Cache
+    if ($cache_info == 'files' OR $cache_info = 'memcached') {
+        $cacheInfo = zb_ListCacheInformRenderContainer();
+        $sysInfoData.= wf_modalAuto(__('Cache'), __('Cache information'), $cacheInfo, 'ubButton');
     }
 
     show_window('', $sysInfoData);

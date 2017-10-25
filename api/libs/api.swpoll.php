@@ -48,6 +48,139 @@ function sp_parse_zyportstates($data) {
 }
 
 /**
+ * Some Foxgate 60xx port state data parser
+ * 
+ * @return string
+ */
+function sp_parse_fxportstates($data) {
+    $result = '';
+    if (!empty($data)) {
+        $data = explode('=', $data);
+        $data[0] = trim($data[0]);
+        $portnum = substr($data[0], -2);
+        $portnum = str_replace('.', '', $portnum);
+        $portnum = $portnum - 1;
+
+        if ($portnum != 0) {
+            if (ispos($data[1], '1')) {
+                $cells = wf_TableCell($portnum, '24', '', 'style="height:20px;"');
+                $cells.= wf_TableCell(web_bool_led(true));
+                $rows = wf_TableRow($cells, 'row3');
+                $result = wf_TableBody($rows, '100%', 0, '');
+            } else {
+                $cells = wf_TableCell($portnum, '24', '', 'style="height:20px;"');
+                $cells.= wf_TableCell(web_bool_led(false));
+                $rows = wf_TableRow($cells, 'row3');
+                $result = wf_TableBody($rows, '100%', 0, '');
+            }
+        }
+        return ($result);
+    } else {
+        return (__('Empty reply received'));
+    }
+}
+
+/**
+ * D-Link Cable diagnostic data parser
+ * 
+ * @return string
+ */
+function sp_parse_cable_tester($ip, $community, $currentTemplate) {
+    if (!empty($currentTemplate)) {
+
+        $snmp = new SNMPHelper();
+        $result = '';
+        @$sectionOids = explode(',', $currentTemplate['OIDS']);
+
+        $sectionResult = array();
+        $rawData_arr = array();
+
+        //now parse each oid
+        if (!empty($sectionOids)) {
+            foreach ($sectionOids as $eachOid) {
+                $eachOid = trim($eachOid);
+                $rawData = $snmp->walk($ip, $community, $eachOid, true);
+                $rawData_arr[] = str_replace('"', '`', $rawData);
+                // Create new array [$portnum][$each]=>$data
+                foreach ($rawData_arr as $each => $data_arr) {
+                    $data = explode(PHP_EOL, $data_arr);
+                    foreach ($data as $data_info) {
+                        $data = explode('=', $data_info);
+                        if (isset($data[0]) and isset($data[1])) {
+                            $data[0] = trim($data[0]);
+                            $portnum = substr($data[0], -2);
+                            $portnum = str_replace('.', '', $portnum);
+                            $interger = trim($data[1]);
+                            $interger = str_replace('INTEGER: ', '', $interger);
+
+                            $sectionResult[$portnum][$each] = $interger;
+                        }
+                    }
+                }
+            }
+        }
+        // Parsing result after snmwalk and create data array
+        foreach ($sectionResult as $port => $data) {
+            if (!empty($data)) {
+                $cells = wf_TableCell($port, '24', '', 'style="height:20px;"');
+                $cells_data = '';
+                foreach ($data as $test_id => $info) {
+                    if ($test_id == 0 and $info != 2) {
+                        if ($data[1] == 0 OR $data[2] == 0 OR $data[3] == 0 OR $data[4] == 0) {
+                            $cells_data .= __("OK");
+                            // Return Length for Pair2, becase some modele have accrose rawdata
+                            $cells_data .= ($data[2] == 0 AND $data[6] > 0 ) ? "," . __("Cable Length:") . $data[6] : '';
+                        } elseif ($data[1] == 1 OR $data[2] == 1 OR $data[3] == 1 OR $data[4] == 1) {
+                            $cells_data .= ($data[1] == 1) ? __("Pair1 Open:") . $data[5] . " " : '';
+                            $cells_data .= ($data[2] == 1) ? __("Pair2 Open:") . $data[6] . " " : '';
+                            $cells_data .= ($data[3] == 1) ? __("Pair3 Open:") . $data[7] . " " : '';
+                            $cells_data .= ($data[4] == 1) ? __("Pair4 Open:") . $data[8] . " " : '';
+                        } elseif ($data[1] == 2 OR $data[2] == 2 OR $data[3] == 2 OR $data[4] == 2) {
+                            $cells_data .= ($data[1] == 2) ? __("Pair1 Short:") . $data[5] . " " : '';
+                            $cells_data .= ($data[2] == 2) ? __("Pair2 Short:") . $data[6] . " " : '';
+                            $cells_data .= ($data[3] == 2) ? __("Pair3 Short:") . $data[7] . " " : '';
+                            $cells_data .= ($data[4] == 2) ? __("Pair4 Short:") . $data[8] . " " : '';
+                        } elseif ($data[1] == 3 OR $data[2] == 3 OR $data[3] == 3 OR $data[4] == 3) {
+                            $cells_data .= ($data[1] == 3) ? __("Pair1 Open-Short:") . $data[5] . " " : '';
+                            $cells_data .= ($data[2] == 3) ? __("Pair2 Open-Short:") . $data[6] . " " : '';
+                            $cells_data .= ($data[3] == 3) ? __("Pair3 Open-Short:") . $data[7] . " " : '';
+                            $cells_data .= ($data[4] == 3) ? __("Pair4 Open-Short:") . $data[8] . " " : '';
+                        } elseif ($data[1] == 4 OR $data[2] == 4 OR $data[3] == 4 OR $data[4] == 4) {
+                            $cells_data .= ($data[1] == 4) ? __("Pair1 crosstalk") . " " : '';
+                            $cells_data .= ($data[2] == 4) ? __("Pair2 crosstalk") . " " : '';
+                            $cells_data .= ($data[3] == 4) ? __("Pair3 crosstalk") . " " : '';
+                            $cells_data .= ($data[4] == 4) ? __("Pair4 crosstalk") . " " : '';
+                        } elseif ($data[1] == 5 OR $data[2] == 5 OR $data[5] == 5 OR $data[4] == 5) {
+                            $cells_data .= ($data[1] == 5) ? __("Pair1 unknown") . " " : '';
+                            $cells_data .= ($data[2] == 5) ? __("Pair2 unknown") . " " : '';
+                            $cells_data .= ($data[3] == 5) ? __("Pair3 unknown") . " " : '';
+                            $cells_data .= ($data[4] == 5) ? __("Pair4 unknown") . " " : '';
+                        } elseif ($data[1] == 6 OR $data[2] == 6 OR $data[5] == 6 OR $data[4] == 6) {
+                            $cells_data .= ($data[1] == 6) ? __("Pair1 count") . " " : '';
+                            $cells_data .= ($data[2] == 6) ? __("Pair2 count") . " " : '';
+                            $cells_data .= ($data[3] == 6) ? __("Pair3 count") . " " : '';
+                            $cells_data .= ($data[4] == 6) ? __("Pair4 count") . " " : '';
+                        } elseif ($data[1] == 7 OR $data[2] == 7 OR $data[5] == 7 OR $data[4] == 7) {
+                            $cells_data .= __("No Cable");
+                        } elseif ($data[1] == 8 OR $data[2] == 8 OR $data[5] == 8 OR $data[4] == 8) {
+                            $cells_data .= __("The PHY can't support Cable Diagnostic");
+                        }
+                    } elseif ($test_id == 0 and $info == 2) {
+                        $cells_data .= __("Cable Diagnostic processing");
+                    }
+                }
+                $cells.= wf_TableCell($cells_data);
+                $rows = wf_TableRow($cells, 'row3');
+                $result .= wf_TableBody($rows, '100%', 0, '');
+            }
+        }
+        return ($result);
+    } else {
+        return (__('Empty reply received'));
+    }
+}
+
+/**
  * Zyxel Port byte counters data parser
  * 
  * @return string
@@ -72,6 +205,42 @@ function sp_parse_zyportbytes($data) {
             $cells.= wf_TableCell($bytes);
             $rows = wf_TableRow($cells, 'row3');
             $result = wf_TableBody($rows, '100%', 0, '');
+        }
+        return ($result);
+    } else {
+        return (__('Empty reply received'));
+    }
+}
+
+/**
+ * Foxgate 60xx port byte counters data parser
+ * 
+ * @return string
+ */
+function sp_parse_fxportbytes($data) {
+    $result = '';
+    if (!empty($data)) {
+        $data = explode('=', $data);
+        $data[0] = trim($data[0]);
+        $portnum = substr($data[0], -2);
+        $portnum = str_replace('.', '', $portnum);
+        $portnum = $portnum - 1; //shitty offset
+
+        $bytes = str_replace(array('Counter32:', 'Counter64:'), '', $data[1]);
+        $bytes = trim($bytes);
+
+        if ($portnum != 0) {
+            if (ispos($data[1], 'up')) {
+                $cells = wf_TableCell($portnum, '24', '', 'style="height:20px;"');
+                $cells.= wf_TableCell($bytes);
+                $rows = wf_TableRow($cells, 'row3');
+                $result = wf_TableBody($rows, '100%', 0, '');
+            } else {
+                $cells = wf_TableCell($portnum, '24', '', 'style="height:20px;"');
+                $cells.= wf_TableCell($bytes);
+                $rows = wf_TableRow($cells, 'row3');
+                $result = wf_TableBody($rows, '100%', 0, '');
+            }
         }
         return ($result);
     } else {
@@ -262,12 +431,20 @@ function sp_SnmpGetAllDevices() {
  * @return array
  */
 function sp_SnmpGetAllModelTemplates() {
-    $path = CONFIG_PATH . "snmptemplates/";
+    $path = CONFIG_PATH . 'snmptemplates/';
+    $privatePath = DATA_PATH . 'documents/mysnmptemplates/';
     $alltemplates = rcms_scandir($path);
     $result = array();
     if (!empty($alltemplates)) {
         foreach ($alltemplates as $each) {
             $result[$each] = rcms_parse_ini_file($path . $each, true);
+        }
+    }
+
+    $myTemplates = rcms_scandir($privatePath);
+    if (!empty($myTemplates)) {
+        foreach ($myTemplates as $each) {
+            $result[$each] = rcms_parse_ini_file($privatePath . $each, true);
         }
     }
     return ($result);
@@ -330,6 +507,64 @@ function sp_SnmpParseFdbDl($portTable) {
 }
 
 /**
+ * Parsing of FDB port table SNMP raw data for some exotic Tplink switches
+ * 
+ * @param   $portTable raw SNMP data
+ * 
+ * @return  array
+ */
+function sp_SnmpParseFdbTlp($portTable, $oid) {
+    $portData = array();
+    $arr_PortTable = explodeRows($portTable);
+    if (!empty($arr_PortTable)) {
+        foreach ($arr_PortTable as $eachEntry) {
+            if (!empty($eachEntry)) {
+                $eachEntry = str_replace($oid, '', $eachEntry);
+                $cleanMac = '';
+                $rawMac = explode('=', $eachEntry);
+                $rawMac[0] = substr($rawMac[0], 0, -2); //drop last 01 octet
+                $rawMac[0] = '.1' . $rawMac[0]; // add .1 part. fuck this shit
+                $parts = array('format' => '%02X:%02X:%02X:%02X:%02X:%02X') + explode('.', trim($rawMac[0], '.'));
+                unset($parts[0]);
+                if (count($parts) == 7) {
+                    $cleanMac = call_user_func_array('sprintf', $parts);
+                    $portData[strtolower($cleanMac)] = vf($rawMac[1], 3);
+                }
+            }
+        }
+    }
+    return ($portData);
+}
+
+/**
+ * Parsing of FDB port table SNMP raw data for some strange foxgate switches
+ * 
+ * @param   $portTable raw SNMP data
+ * 
+ * @return  array
+ */
+function sp_SnmpParseFdbFlp($portTable, $oid) {
+    $portData = array();
+    $arr_PortTable = explodeRows($portTable);
+    if (!empty($arr_PortTable)) {
+        foreach ($arr_PortTable as $eachEntry) {
+            if (!empty($eachEntry)) {
+                $eachEntry = str_replace($oid, '', $eachEntry);
+                $cleanMac = '';
+                $rawMac = explode('=', $eachEntry);
+                $parts = array('format' => '%02X:%02X:%02X:%02X:%02X:%02X') + explode('.', trim($rawMac[0], '.'));
+                unset($parts[0]);
+                if (count($parts) == 7) {
+                    $cleanMac = call_user_func_array('sprintf', $parts);
+                    $portData[strtolower($cleanMac)] = vf($rawMac[1], 3);
+                }
+            }
+        }
+    }
+    return ($portData);
+}
+
+/**
  * Show data for some device
  * 
  * @param   $ip device ip
@@ -339,7 +574,7 @@ function sp_SnmpParseFdbDl($portTable) {
  * 
  * @return  void
  */
-function sp_SnmpPollDevice($ip, $community, $alltemplates, $deviceTemplate, $allusermacs, $alladdress, $quiet = false) {
+function sp_SnmpPollDevice($ip, $community, $alltemplates, $deviceTemplate, $allusermacs, $alladdress, $communitywrite = '', $quiet = false) {
     global $ubillingConfig;
     if (isset($alltemplates[$deviceTemplate])) {
         $currentTemplate = $alltemplates[$deviceTemplate];
@@ -375,22 +610,61 @@ function sp_SnmpPollDevice($ip, $community, $alltemplates, $deviceTemplate, $all
                     if (!$quiet) {
                         $finalResult.= wf_tag('div', false, 'dashboard', '');
                     }
-                    $sectionName = $eachpoll['NAME'];
-                    $sectionOids = explode(',', $eachpoll['OIDS']);
-                    $sectionParser = $eachpoll['PARSER'];
+
+                    @$sectionName = $eachpoll['NAME'];
+                    @$sectionOids = explode(',', $eachpoll['OIDS']);
+
+                    if (isset($eachpoll['SETOIDS'])) {
+                        $sectionSetOids = explode(',', $eachpoll['SETOIDS']);
+                    } else {
+                        $sectionSetOids = array();
+                    }
+
+                    @$sectionParser = $eachpoll['PARSER'];
                     $sectionResult = '';
+
+                    //yeah, lets set some oids to this shit
+                    if (!empty($sectionSetOids)) {
+                        foreach ($sectionSetOids as $eachSetOid) {
+                            $eachSetOidRaw = trim($eachSetOid);
+                            $eachSetOidRaw = explode('|', $eachSetOidRaw);
+                            //all three parts of set squense present
+                            if ((isset($eachSetOidRaw[0])) AND ( isset($eachSetOidRaw[1])) AND ( isset($eachSetOidRaw[2]))) {
+                                $setDataTmp[0] = array('oid' => $eachSetOidRaw[0], 'type' => $eachSetOidRaw[1], 'value' => $eachSetOidRaw[2]);
+                                if (!empty($communitywrite)) {
+                                    $runSet = $snmp->set($ip, $communitywrite, $setDataTmp);
+                                }
+                            }
+                        }
+                    }
                     //now parse each oid
-                    foreach ($sectionOids as $eachOid) {
-                        $eachOid = trim($eachOid);
-                        $rawData = $snmp->walk($ip, $community, $eachOid, true);
-                        $rawData = str_replace('"', '`', $rawData);
-                        $parseCode = '$sectionResult.=' . $sectionParser . '("' . $rawData . '");';
-                        eval($parseCode);
+                    if (!empty($sectionOids)) {
+                        if ($section == 'cablediag') {
+                            if (!empty($sectionParser)) {
+                                $sectionResult .= $sectionParser($ip, $community, $currentTemplate['cablediag']);
+                            } else {
+                                $sectionResult = '';
+                            }
+                        } else {
+                            foreach ($sectionOids as $eachOid) {
+                                $eachOid = trim($eachOid);
+                                $rawData = $snmp->walk($ip, $community, $eachOid, true);
+                                $rawData = str_replace('"', '`', $rawData);
+                                if (!empty($sectionParser)) {
+                                    $parseCode = '$sectionResult.=' . $sectionParser . '("' . $rawData . '");';
+                                    eval($parseCode);
+                                } else {
+                                    $sectionResult = '';
+                                }
+                            }
+                        }
                     }
 
                     if (!$quiet) {
-                        $finalResult.=wf_tag('div', false, 'dashtask', '') . wf_tag('strong') . __($sectionName) . wf_tag('strong', true) . '<br>';
-                        $finalResult.=$sectionResult . wf_tag('div', true);
+                        if (!empty($sectionResult)) {
+                            $finalResult.=wf_tag('div', false, 'dashtask', '') . wf_tag('strong') . __($sectionName) . wf_tag('strong', true) . '<br>';
+                            $finalResult.=$sectionResult . wf_tag('div', true);
+                        }
                     }
                 }
             }
@@ -416,6 +690,22 @@ function sp_SnmpPollDevice($ip, $community, $alltemplates, $deviceTemplate, $all
                         //custom dlink port table with VLANS
                         $portTable = $snmp->walk($ip, $community, '.1.3.6.1.2.1.17.7.1.2.2.1.2', true);
                     }
+
+                    if ($deviceFdbMode == 'tlp5428ev2') {
+                        $tlpOid = '.1.3.6.1.4.1.11863.1.1.1.2.3.2.2.1.3';
+                        $portTable = $snmp->walk($ip, $community, $tlpOid, true);
+                    }
+
+                    if ($deviceFdbMode == 'tlp2428') {
+                        $tlpOid = '.1.3.6.1.4.1.11863.1.1.11.2.3.2.2.1.3';
+                        $portTable = $snmp->walk($ip, $community, $tlpOid, true);
+                    }
+
+                    //foxgate lazy parsing
+                    if ($deviceFdbMode == 'flp') {
+                        $flpOid = '.1.3.6.1.2.1.17.7.1.2.3.1.2';
+                        $portTable = $snmp->walk($ip, $community, $flpOid, true);
+                    }
                 }
                 if (!empty($portTable)) {
                     if ($deviceFdbMode == 'default') {
@@ -425,6 +715,16 @@ function sp_SnmpPollDevice($ip, $community, $alltemplates, $deviceTemplate, $all
                         if ($deviceFdbMode == 'dlp') {
                             //exotic dlink parser
                             $portData = sp_SnmpParseFdbDl($portTable);
+                        }
+
+                        if (($deviceFdbMode == 'tlp5428ev2') OR ( $deviceFdbMode == 'tlp2428')) {
+                            //more exotic tplink parser
+                            $portData = sp_SnmpParseFdbTlp($portTable, $tlpOid);
+                        }
+
+                        //foxgate - its you again? Oo
+                        if ($deviceFdbMode == 'flp') {
+                            $portData = sp_SnmpParseFdbFlp($portTable, $flpOid);
                         }
                     }
 

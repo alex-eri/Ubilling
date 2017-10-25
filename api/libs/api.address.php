@@ -10,10 +10,8 @@
  * @return void
  */
 function zb_AddressCleanAddressCache() {
-    $cachePath = 'exports/fulladdresslistcache.dat';
-    if (file_exists($cachePath)) {
-        unlink($cachePath);
-    }
+    $cache = new UbillingCache();
+    $cache->delete('FULLADDRESSLISTCACHE');
 }
 
 /**
@@ -30,6 +28,8 @@ function zb_AddressCreateCity($cityname, $cityalias) {
     $query = "INSERT INTO `city` (`id`,`cityname`,`cityalias`) VALUES (NULL, '" . $cityname . "','" . $cityalias . "'); ";
     nr_query($query);
     log_register('CREATE AddressCity `' . $cityname . '` `' . $cityalias . '`');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -44,6 +44,8 @@ function zb_AddressDeleteCity($cityid) {
     $query = "DELETE from `city` WHERE `id` = '" . $cityid . "';";
     nr_query($query);
     log_register('DELETE AddressCity [' . $cityid . ']');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -60,6 +62,8 @@ function zb_AddressChangeCityName($cityid, $cityname) {
     $query = "UPDATE `city` SET `cityname` = '" . $cityname . "' WHERE `id`= '" . $cityid . "' ;";
     nr_query($query);
     log_register('CHANGE AddressCityName [' . $cityid . '] `' . $cityname . '`');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -181,6 +185,8 @@ function zb_AddressCreateStreet($cityid, $streetname, $streetalias) {
     $query = "INSERT INTO `street` (`id`,`cityid`,`streetname`,`streetalias`) VALUES  (NULL, '" . $cityid . "','" . $streetname . "','" . $streetalias . "');";
     nr_query($query);
     log_register('CREATE AddressStreet [' . $cityid . '] `' . $streetname . '` `' . $streetalias . '`');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -195,6 +201,8 @@ function zb_AddressDeleteStreet($streetid) {
     $query = "DELETE from `street` WHERE `id` = '" . $streetid . "';";
     nr_query($query);
     log_register('DELETE AddressStreet [' . $streetid . ']');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -212,6 +220,8 @@ function zb_AddressChangeStreetName($streetid, $streetname) {
     $query = "UPDATE `street` SET `streetname` = '" . $streetname . "' WHERE `id`= '" . $streetid . "' ;";
     nr_query($query);
     log_register('CHANGE AddressStreetName [' . $streetid . '] `' . $streetname . '`');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -294,6 +304,8 @@ function zb_AddressCreateBuild($streetid, $buildnum) {
     $query = "INSERT INTO `build` (`id`,`streetid`,`buildnum`) VALUES (NULL, '" . $streetid . "','" . $buildnum . "');";
     nr_query($query);
     log_register('CREATE AddressBuild [' . $streetid . '] `' . $buildnum . '`');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -308,6 +320,8 @@ function zb_AddressDeleteBuild($buildid) {
     $query = "DELETE from `build` WHERE `id` = '" . $buildid . "';";
     nr_query($query);
     log_register('DELETE AddressBuild [' . $buildid . ']');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -378,6 +392,8 @@ function zb_AddressChangeBuildNum($buildid, $buildnum) {
     $query = "UPDATE `build` SET `buildnum` = '" . $buildnum . "' WHERE `id`= '" . $buildid . "' ;";
     nr_query($query);
     log_register('CHANGE AddressBuildNum [' . $buildid . '] `' . $buildnum . '`');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -450,7 +466,7 @@ function zb_AddressGetAptAllDataByBuild($buildid) {
  * @return string
  */
 function zb_UserGetFullAddress($login) {
-    $alladdress = zb_AddressGetFulladdresslist();
+    $alladdress = zb_AddressGetFulladdresslistCached();
     @$address = $alladdress[$login];
     return ($address);
 }
@@ -477,6 +493,8 @@ function zb_AddressCreateApartment($buildid, $entrance, $floor, $apt) {
         ";
     nr_query($query);
     log_register('CREATE AddressApartment [' . $buildid . '] `' . $entrance . '` `' . $floor . '` `' . $apt . '`');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -492,6 +510,7 @@ function zb_AddressDeleteApartment($aptid) {
     nr_query($query);
     log_register('DELETE AddressApartment [' . $aptid . ']');
     zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -523,6 +542,7 @@ function zb_AddressChangeApartment($aptid, $buildid, $entrance, $floor, $apt) {
     nr_query($query);
     log_register('CHANGE AddressApartment [' . $aptid . '] [' . $buildid . '] `' . $entrance . '` `' . $floor . '` `' . $apt . '`');
     zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -547,6 +567,7 @@ function zb_AddressCreateAddress($login, $aptid) {
     nr_query($query);
     log_register('CREATE AddressOccupancy (' . $login . ') [' . $aptid . ']');
     zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -561,6 +582,8 @@ function zb_AddressDeleteAddress($addrid) {
     $query = "DELETE from `address` WHERE `id` = '" . $addrid . "';";
     nr_query($query);
     log_register('DELETE AddressOccupancy [' . $addrid . ']');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -575,6 +598,8 @@ function zb_AddressOrphanUser($login) {
     $query = "DELETE from `address` WHERE `login` = '" . $login . "';";
     nr_query($query);
     log_register('ORPHAN AddressOccupancy (' . $login . ')');
+    zb_AddressCleanAddressCache();
+    zb_UserGetAllDataCacheClean();
 }
 
 /**
@@ -655,13 +680,26 @@ function web_CitySelector() {
  * @return string
  */
 function web_CitySelectorAc() {
+    global $ubillingConfig;
+    $altCfg = $ubillingConfig->getAlter();
+    if ($altCfg['BRANCHES_ENABLED']) {
+        global $branchControl;
+        $branchControl->loadCities();
+    }
+
     $allcity = array();
     $tmpCity = zb_AddressGetCityAllData();
     $allcity['-'] = '-'; //placeholder
 
     if (!empty($tmpCity)) {
         foreach ($tmpCity as $io => $each) {
-            $allcity[$each['id']] = $each['cityname'];
+            if ($altCfg['BRANCHES_ENABLED']) {
+                if ($branchControl->isMyCity($each['id'])) {
+                    $allcity[$each['id']] = $each['cityname'];
+                }
+            } else {
+                $allcity[$each['id']] = $each['cityname'];
+            }
         }
     }
 
@@ -902,6 +940,8 @@ function web_BuildLister($streetid) {
             $acts.='' . wf_JSAlert('?module=builds&action=editbuild&streetid=' . $streetid . '&buildid=' . $eachbuild['id'], web_edit_icon(), 'Are you serious');
             if (!empty($eachbuild['geo'])) {
                 $acts.=' ' . wf_Link("?module=usersmap&findbuild=" . $eachbuild['geo'], wf_img('skins/icon_search_small.gif', __('Find on map')), false);
+            } else {
+                $acts.=' ' . wf_Link('?module=usersmap&locfinder=true&placebld=' . $eachbuild['id'], wf_img('skins/ymaps/target.png', __('Place on map')), false, '');
             }
             if ($altcfg['BUILD_EXTENDED']) {
                 $acts.=' ' . wf_modal(wf_img('skins/icon_passport.gif', __('Build passport')), __('Build passport'), $buildPassport->renderEditForm($eachbuild['id']), '', '600', '450');
@@ -1048,15 +1088,15 @@ function zb_AddressGetFulladdresslist() {
         foreach ($full_adress as $ArrayData) {
             // zero apt handle
             if ($altCfg['ZERO_TOLERANCE']) {
-                $apartment_filtered = ($ArrayData['apt'] == 0) ? '' : '/' .  $ArrayData['apt'];
+                $apartment_filtered = ($ArrayData['apt'] == 0) ? '' : '/' . $ArrayData['apt'];
             } else {
                 $apartment_filtered = '/' . $ArrayData['apt'];
             }
 
-            if (!$altCfg['CITY_DISPLAY']) {
-                $result[$ArrayData['login']] = $ArrayData['streetname'] . ' ' . $ArrayData['buildnum'] . $apartment_filtered;
-            } else {
+            if ($altCfg['CITY_DISPLAY']) {
                 $result[$ArrayData['login']] = $ArrayData['cityname'] . ' ' . $ArrayData['streetname'] . ' ' . $ArrayData['buildnum'] . $apartment_filtered;
+            } else {
+                $result[$ArrayData['login']] = $ArrayData['streetname'] . ' ' . $ArrayData['buildnum'] . $apartment_filtered;
             }
         }
     }
@@ -1073,39 +1113,14 @@ function zb_AddressGetFulladdresslist() {
 function zb_AddressGetFulladdresslistCached() {
     global $ubillingConfig;
     $alterconf = $ubillingConfig->getAlter();
-///////////// cache options
-    $cacheTime = $alterconf['ADDRESS_CACHE_TIME'];
-    $cacheTime = time() - ($cacheTime * 60);
-    $cacheName = 'exports/fulladdresslistcache.dat';
-    $updateCache = false;
-    if (file_exists($cacheName)) {
-        $updateCache = false;
-        if ((filemtime($cacheName) > $cacheTime)) {
-            $updateCache = false;
-        } else {
-            $updateCache = true;
-        }
-    } else {
-        $updateCache = true;
-    }
+    $cacheTime = $alterconf['ADDRESS_CACHE_TIME']*60; // in minutes!!!!
+    $result = '';
+    $cache = new UbillingCache();
+    $result = $cache->getCallback('FULLADDRESSLISTCACHE', function () {
+        return (zb_AddressGetFulladdresslist());
+    }, $cacheTime);
 
-/////////////////////////////////////////////////
-
-    if (!$updateCache) {
-        //read data directly from cache
-        $result = array();
-        $rawData = file_get_contents($cacheName);
-        if (!empty($rawData)) {
-            $result = unserialize($rawData);
-        }
-        return ($result);
-    } else {
-//processing address extracting and store to cache
-        $result = zb_AddressGetFulladdresslist();
-        $newCacheData = serialize($result);
-        file_put_contents($cacheName, $newCacheData);
-        return($result);
-    }
+    return($result);
 }
 
 /**
@@ -1128,7 +1143,7 @@ function zb_AddressGetFullCityaddresslist() {
         foreach ($full_adress as $ArrayData) {
             // zero apt handle
             if ($altCfg['ZERO_TOLERANCE']) {
-                $apartment_filtered = ($ArrayData['apt'] == 0) ? '' : '/' .  $ArrayData['apt'];
+                $apartment_filtered = ($ArrayData['apt'] == 0) ? '' : '/' . $ArrayData['apt'];
             } else {
                 $apartment_filtered = '/' . $ArrayData['apt'];
             }

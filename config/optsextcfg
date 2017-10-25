@@ -4,7 +4,6 @@ ctype
 curl
 date
 dom
-ereg
 filter
 ftp
 gd
@@ -16,7 +15,6 @@ libxml
 mbstring
 memcache
 memcached
-mhash
 mysql
 mysqli
 mysqlnd
@@ -27,6 +25,7 @@ PDO
 pdo_sqlite
 Phar
 posix
+redis
 Reflection
 session
 SimpleXML

@@ -2,11 +2,60 @@
 
 class ADcomments {
 
+    /**
+     * Current scope comments data
+     *
+     * @var array
+     */
     protected $data = array();
+
+    /**
+     * Current instance scope
+     *
+     * @var string
+     */
     protected $scope = '';
+
+    /**
+     * UbillingCache object placeholder
+     *
+     * @var object
+     */
+    protected $cache = '';
+
+     /**
+     * Comments caching time
+     *
+     * @var int
+     */
+    protected $cacheTime = 2592000; //month by default
+
+    /**
+     * Current instance item id
+     *
+     * @var string
+     */
     protected $item = '';
+
+    /**
+     * Instance administrators login
+     *
+     * @var string
+     */
     protected $mylogin = '';
+
+    /**
+     * Current scope items array
+     *
+     * @var array
+     */
     protected $scopeItems = array();
+
+    /**
+     * Scope items loaded flag 
+     *
+     * @var bool
+     */
     protected $scopeItemsLoaded = false;
 
     const EX_EMPTY_SCOPE = 'EMPTY_SCOPE_RECEIVED';
@@ -22,9 +71,28 @@ class ADcomments {
         if (!empty($scope)) {
             $this->setScope($scope);
             $this->setMyLogin();
+            $this->initCache();
         } else {
             throw new Exception(self::EX_EMPTY_SCOPE);
         }
+    }
+
+    /**
+     * Initalizes system cache object for further usage
+     * 
+     * @return void
+     */
+    protected function initCache() {
+        $this->cache = new UbillingCache();
+    }
+
+    /**
+     * Clear scope cache object
+     * 
+     * @return void
+     */
+    protected function clearScopeCache() {
+        $this->cache->delete('ADCOMMENTS_' . $this->scope);
     }
 
     /**
@@ -112,6 +180,7 @@ class ADcomments {
                 . "VALUES (NULL, '" . $this->scope . "', '" . $this->item . "', '" . $curdate . "', '" . $this->mylogin . "', '" . $text . "');";
         nr_query($query);
         log_register("ADCOMM CREATE SCOPE `" . $this->scope . "` ITEM [" . $this->item . "]");
+        $this->clearScopeCache();
     }
 
     /**
@@ -126,6 +195,7 @@ class ADcomments {
         $query = "DELETE FROM `adcomments` WHERE `id`='" . $id . "';";
         nr_query($query);
         log_register("ADCOMM DELETE SCOPE `" . $this->scope . "` ITEM [" . $this->item . "]");
+        $this->clearScopeCache();
     }
 
     /**
@@ -139,6 +209,7 @@ class ADcomments {
         $text = strip_tags($text);
         simple_update_field('adcomments', 'text', $text, "WHERE `id`='" . $id . "';");
         log_register("ADCOMM CHANGE SCOPE `" . $this->scope . "` ITEM [" . $this->item . "]");
+        $this->clearScopeCache();
     }
 
     /**
@@ -290,7 +361,9 @@ class ADcomments {
     protected function loadScopeItems() {
         if ($this->scope) {
             $query = "SELECT * from `adcomments` WHERE `scope`='" . $this->scope . "';";
-            $all = simple_queryall($query);
+            $all = $this->cache->getCallback('ADCOMMENTS_' . $this->scope, function() use ($query) {
+                return (simple_queryall($query));
+            }, $this->cacheTime);
             if (!empty($all)) {
                 foreach ($all as $io => $each) {
                     if (isset($this->scopeItems[$each['item']])) {
